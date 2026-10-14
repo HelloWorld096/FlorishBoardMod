@@ -42,6 +42,7 @@ import dev.patrickgold.florisboard.ime.editor.InputAttributes
 import dev.patrickgold.florisboard.ime.editor.OperationUnit
 import dev.patrickgold.florisboard.ime.input.CapitalizationBehavior
 import dev.patrickgold.florisboard.ime.input.InputEventDispatcher
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.LatchedModifiers
 import dev.patrickgold.florisboard.ime.input.InputKeyEventReceiver
 import dev.patrickgold.florisboard.ime.input.InputShiftState
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
@@ -322,7 +323,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Handles [KeyCode] arrow and move events, behaves differently depending on text selection.
      */
     fun handleArrow(code: Int, count: Int = 1) = editorInstance.apply {
-        val isShiftPressed = activeState.isManualSelectionMode || inputEventDispatcher.isPressed(KeyCode.SHIFT)
+        val isShiftPressed = activeState.isManualSelectionMode || inputEventDispatcher.isPressed(KeyCode.SHIFT) ||
+            LatchedModifiers.shift
+        val isCtrlLatched = LatchedModifiers.ctrl
+        val isAltLatched = LatchedModifiers.alt
         val content = activeContent
         val selection = content.selection
         when (code) {
@@ -331,28 +335,28 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     activeState.isManualSelectionModeStart = true
                     activeState.isManualSelectionModeEnd = false
                 }
-                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_LEFT, meta(shift = isShiftPressed), count)
+                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_LEFT, meta(ctrl = isCtrlLatched, alt = isAltLatched, shift = isShiftPressed), count)
             }
             KeyCode.ARROW_RIGHT -> {
                 if (!selection.isSelectionMode && activeState.isManualSelectionMode) {
                     activeState.isManualSelectionModeStart = false
                     activeState.isManualSelectionModeEnd = true
                 }
-                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT, meta(shift = isShiftPressed), count)
+                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT, meta(ctrl = isCtrlLatched, alt = isAltLatched, shift = isShiftPressed), count)
             }
             KeyCode.ARROW_UP -> {
                 if (!selection.isSelectionMode && activeState.isManualSelectionMode) {
                     activeState.isManualSelectionModeStart = true
                     activeState.isManualSelectionModeEnd = false
                 }
-                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_UP, meta(shift = isShiftPressed), count)
+                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_UP, meta(ctrl = isCtrlLatched, alt = isAltLatched, shift = isShiftPressed), count)
             }
             KeyCode.ARROW_DOWN -> {
                 if (!selection.isSelectionMode && activeState.isManualSelectionMode) {
                     activeState.isManualSelectionModeStart = false
                     activeState.isManualSelectionModeEnd = true
                 }
-                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_DOWN, meta(shift = isShiftPressed), count)
+                sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_DOWN, meta(ctrl = isCtrlLatched, alt = isAltLatched, shift = isShiftPressed), count)
             }
             KeyCode.MOVE_START_OF_PAGE -> {
                 if (!selection.isSelectionMode && activeState.isManualSelectionMode) {
@@ -383,6 +387,41 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT, meta(alt = true, shift = isShiftPressed), count)
             }
         }
+        LatchedModifiers.consumeOneShot()
+    }
+
+    /**
+     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row, then clears
+     * the one-shot modifiers (Ctrl, Alt).
+     */
+    fun sendLatchedKeyEvent(keyEventCode: Int) {
+        editorInstance.sendDownUpKeyEvent(
+            keyEventCode,
+            editorInstance.meta(
+                ctrl = LatchedModifiers.ctrl,
+                alt = LatchedModifiers.alt,
+                shift = LatchedModifiers.shift,
+            ),
+        )
+        LatchedModifiers.consumeOneShot()
+    }
+
+    /**
+     * If Ctrl or Alt is latched, sends [text] as a key combo (e.g. Ctrl+A) instead of typing it.
+     *
+     * @return True if the key combo was sent, false if the text should be typed normally.
+     */
+    private fun trySendLatchedCharCombo(text: String): Boolean {
+        if (!LatchedModifiers.ctrl && !LatchedModifiers.alt) return false
+        if (text.length != 1) return false
+        val c = text[0].lowercaseChar()
+        val keyCode = when (c) {
+            in 'a'..'z' -> KeyEvent.KEYCODE_A + (c - 'a')
+            in '0'..'9' -> KeyEvent.KEYCODE_0 + (c - '0')
+            else -> return false
+        }
+        sendLatchedKeyEvent(keyCode)
+        return true
     }
 
     /**
@@ -807,6 +846,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     else -> when (data.type) {
                         KeyType.CHARACTER, KeyType.NUMERIC ->{
                             val text = data.asString(isForDisplay = false)
+                            if (trySendLatchedCharCombo(text)) return@batchEdit
                             if (!UCharacter.isUAlphabetic(UCharacter.codePointAt(text, 0))) {
                                 nlpManager.getAutoCommitCandidate()?.let { commitCandidate(it) }
                             }

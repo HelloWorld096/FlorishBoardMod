@@ -283,6 +283,21 @@ class LayoutManager(context: Context) {
                     addRowHints(row, symbolRow, KeyType.CHARACTER)
                 }
             }
+            // With a dedicated number row the top letter row (qwerty...) is shifted out of the symbols' bottom
+            // alignment and would get no hints at all. Fill it with programmer-friendly symbols instead.
+            if (prefs.keyboard.numberRow.get() && computedArrangement.size > 1) {
+                val topLetterRow = computedArrangement[1]
+                for ((k, key) in topLetterRow.withIndex()) {
+                    val symbol = TOP_ROW_SYMBOL_HINTS.getOrNull(k) ?: break
+                    if (key.computedSymbolHint == null && key.data.type == KeyType.CHARACTER) {
+                        key.computedSymbolHint = TextKeyData(
+                            type = KeyType.CHARACTER,
+                            code = symbol.code,
+                            label = symbol.toString(),
+                        )
+                    }
+                }
+            }
         }
 
         val array = Array(computedArrangement.size) { computedArrangement[it] }
@@ -297,6 +312,8 @@ class LayoutManager(context: Context) {
             }.getOrNull()?.mapping
         )
     }
+
+    private val TOP_ROW_SYMBOL_HINTS = listOf('%', '\\', '|', '=', '[', ']', '<', '>', '{', '}')
 
     private fun addRowHints(main: Array<TextKey>, hint: Array<TextKey>, hintType: KeyType) {
         for ((k,key) in main.withIndex()) {

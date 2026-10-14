@@ -128,7 +128,7 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
             ActionsOnlySlot {
                 when (item) {
                     is ActionsOnlyItem.Key -> QuickActionButton(item.action, evaluator)
-                    is ActionsOnlyItem.Text -> ActionsOnlyTextButton(item.label, item.active(), item.onTap)
+                    is ActionsOnlyItem.Text -> ActionsOnlyTextButton(item.label, item.active(), onTap = item.onTap)
                 }
             }
         }

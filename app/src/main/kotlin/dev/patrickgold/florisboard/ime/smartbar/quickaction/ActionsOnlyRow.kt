@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,8 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.FlorisImeService
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
@@ -42,22 +46,16 @@ import dev.patrickgold.florisboard.keyboardManager
 import org.florisboard.lib.snygg.ui.SnyggBox
 import org.florisboard.lib.snygg.ui.SnyggRow
 import org.florisboard.lib.snygg.ui.SnyggText
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 
 /**
- * Modifier state that is latched by the actions-only row (Ctrl / Alt / Shift buttons).
- *
- * - [ctrl] and [alt] are one-shot: they apply to the next key event and are then cleared.
- * - [shift] stays latched until it is tapped again, so you can extend a selection with several arrow presses.
+ * Modifier state that is locked on by the actions-only row (Ctrl / Alt / Shift buttons). Like caps lock, a modifier
+ * stays on until its button is tapped again (or a new text field is started). Locked buttons show accent-colored text.
  */
 object LatchedModifiers {
     var ctrl by mutableStateOf(false)
     var alt by mutableStateOf(false)
     var shift by mutableStateOf(false)
-
-    fun consumeOneShot() {
-        ctrl = false
-        alt = false
-    }
 
     fun reset() {
         ctrl = false
@@ -139,6 +137,7 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
             ActionsOnlyTextButton(
                 label = "•".repeat(page + 1),
                 active = false,
+                small = false,
                 onTap = { page = (page + 1) % pages.size },
             )
         }
@@ -146,13 +145,14 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ActionsOnlyTextButton(label: String, active: Boolean, onTap: () -> Unit) {
+private fun ActionsOnlyTextButton(label: String, active: Boolean, small: Boolean = true, onTap: () -> Unit) {
     val inputFeedbackController = FlorisImeService.inputFeedbackController()
-    // A latched modifier is drawn with the theme's Enter key style (accent background), so it is obvious at a glance.
-    val elementName = if (active) FlorisImeUi.Key.elementName else FlorisImeUi.SmartbarActionKey.elementName
+    val elementName = FlorisImeUi.SmartbarActionKey.elementName
+    // Locked state: only the text color changes (to the theme's accent, taken from the Enter key's background).
+    val baseStyle = rememberSnyggThemeQuery(elementName)
+    val accentStyle = rememberSnyggThemeQuery(FlorisImeUi.Key.elementName, mapOf(FlorisImeUi.Attr.Code to KeyCode.ENTER))
     SnyggBox(
         elementName = elementName,
-        attributes = if (active) mapOf(FlorisImeUi.Attr.Code to KeyCode.ENTER) else emptyMap(),
         clickAndSemanticsModifier = Modifier
             .aspectRatio(1f)
             .pointerInput(onTap) {
@@ -165,10 +165,17 @@ private fun ActionsOnlyTextButton(label: String, active: Boolean, onTap: () -> U
             },
         contentAlignment = Alignment.Center,
     ) {
-        SnyggText(
-            elementName = "${FlorisImeUi.SmartbarActionKey.elementName}-text",
-            text = label,
-        )
+        if (small) {
+            Text(
+                text = label,
+                color = if (active) accentStyle.background(default = Color(0xFF4CAF50)) else baseStyle.foreground(),
+                fontSize = 11.sp,
+                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                maxLines = 1,
+            )
+        } else {
+            SnyggText(elementName = "$elementName-text", text = label)
+        }
     }
 }
 

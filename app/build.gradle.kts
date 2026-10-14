@@ -70,7 +70,8 @@ android {
         applicationId = "dev.patrickgold.florisboard"
         minSdk = projectMinSdk.toInt()
         targetSdk = projectTargetSdk.toInt()
-        versionCode = projectVersionCode.toInt()
+        // The CI run number is added so every CI build is a valid in-place update of the previous one.
+        versionCode = projectVersionCode.toInt() + (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0)
         versionName = projectVersionName.substringBefore("-")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -103,6 +104,15 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+    }
+
+    signingConfigs {
+        create("mod") {
+            storeFile = rootProject.file("mod.keystore")
+            storePassword = "floris-mod"
+            keyAlias = "mod"
+            keyPassword = "floris-mod"
+        }
     }
 
     buildTypes {
@@ -144,6 +154,15 @@ android {
             resValue("mipmap", "floris_app_icon_round", "@mipmap/ic_app_icon_stable_round")
             resValue("drawable", "floris_app_icon_foreground", "@drawable/ic_app_icon_stable_foreground")
             resValue("string", "floris_app_name", "@string/app_name")
+        }
+
+        // Optimized (R8-minified) build signed with a fixed key, so new builds install over old ones.
+        create("mod") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".mod"
+            signingConfig = signingConfigs.getByName("mod")
+            matchingFallbacks += listOf("release")
+            resValue("string", "floris_app_name", "FlorisBoard Mod")
         }
 
         create("benchmark") {

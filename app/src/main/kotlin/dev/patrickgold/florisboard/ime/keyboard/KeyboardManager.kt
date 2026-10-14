@@ -387,12 +387,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 sendDownUpKeyEvent(KeyEvent.KEYCODE_DPAD_RIGHT, meta(alt = true, shift = isShiftPressed), count)
             }
         }
-        LatchedModifiers.consumeOneShot()
     }
 
     /**
-     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row, then clears
-     * the one-shot modifiers (Ctrl, Alt).
+     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row,      * the latched modifiers stay on until toggled off (like caps lock).
      */
     fun sendLatchedKeyEvent(keyEventCode: Int) {
         editorInstance.sendDownUpKeyEvent(
@@ -403,7 +401,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                 shift = LatchedModifiers.shift,
             ),
         )
-        LatchedModifiers.consumeOneShot()
     }
 
     /**

@@ -289,7 +289,7 @@ class LayoutManager(context: Context) {
                 val topLetterRow = computedArrangement[1]
                 for ((k, key) in topLetterRow.withIndex()) {
                     val symbol = TOP_ROW_SYMBOL_HINTS.getOrNull(k) ?: break
-                    if (key.computedSymbolHint == null && key.data.type == KeyType.CHARACTER) {
+                    if (key.computedSymbolHint == null && key.data.compute(DefaultComputingEvaluator)?.type == KeyType.CHARACTER) {
                         key.computedSymbolHint = TextKeyData(
                             type = KeyType.CHARACTER,
                             code = symbol.code,

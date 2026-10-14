@@ -313,7 +313,7 @@ class LayoutManager(context: Context) {
         )
     }
 
-    private val TOP_ROW_SYMBOL_HINTS = listOf('%', '\\', '|', '=', '[', ']', '<', '>', '{', '}')
+    private val TOP_ROW_SYMBOL_HINTS = listOf('~', '=', '\\', '/', '[', ']', '{', '}', '<', '>')
 
     private fun addRowHints(main: Array<TextKey>, hint: Array<TextKey>, hintType: KeyType) {
         for ((k,key) in main.withIndex()) {

@@ -18,7 +18,9 @@ package dev.patrickgold.florisboard.ime.smartbar.quickaction
 
 import android.view.KeyEvent
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -94,21 +96,25 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
                 key(TextKeyData.ARROW_LEFT),
                 key(TextKeyData.ARROW_RIGHT),
             ),
-            // Page 2: ctrl, shift, forward delete, up, down
+            // Page 2: ctrl, shift, forward delete, up, down, undo, redo
             listOf(
                 ActionsOnlyItem.Text("Ctrl", { LatchedModifiers.ctrl }) { LatchedModifiers.ctrl = !LatchedModifiers.ctrl },
                 ActionsOnlyItem.Text("Shift", { LatchedModifiers.shift }) { LatchedModifiers.shift = !LatchedModifiers.shift },
                 key(TextKeyData.FORWARD_DELETE),
                 key(TextKeyData.ARROW_UP),
                 key(TextKeyData.ARROW_DOWN),
+                key(TextKeyData.UNDO),
+                key(TextKeyData.REDO),
             ),
-            // Page 3: esc, alt, home, end, tab
+            // Page 3: esc, alt, home, end, tab, page up, page down
             listOf(
                 ActionsOnlyItem.Text("Esc") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_ESCAPE) },
                 ActionsOnlyItem.Text("Alt", { LatchedModifiers.alt }) { LatchedModifiers.alt = !LatchedModifiers.alt },
                 ActionsOnlyItem.Text("Home") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_MOVE_HOME) },
                 ActionsOnlyItem.Text("End") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_MOVE_END) },
                 ActionsOnlyItem.Text("Tab") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_TAB) },
+                ActionsOnlyItem.Text("PgUp") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_PAGE_UP) },
+                ActionsOnlyItem.Text("PgDn") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_PAGE_DOWN) },
             ),
         )
     }
@@ -117,20 +123,25 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
         elementName = FlorisImeUi.SmartbarSharedActionsRow.elementName,
         modifier = modifier.fillMaxSize(),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
+        // Every page has exactly SLOTS_PER_ROW cells of equal width (7 actions + the page switcher), so button size
+        // and spacing are identical on all three rows.
         for (item in pages[page]) {
-            when (item) {
-                is ActionsOnlyItem.Key -> QuickActionButton(item.action, evaluator)
-                is ActionsOnlyItem.Text -> ActionsOnlyTextButton(item.label, item.active(), item.onTap)
+            ActionsOnlySlot {
+                when (item) {
+                    is ActionsOnlyItem.Key -> QuickActionButton(item.action, evaluator)
+                    is ActionsOnlyItem.Text -> ActionsOnlyTextButton(item.label, item.active(), item.onTap)
+                }
             }
         }
         // Page switcher, always the right-most button. 1 dot = page 1, 2 dots = page 2, 3 dots = page 3.
-        ActionsOnlyTextButton(
-            label = "•".repeat(page + 1),
-            active = false,
-            onTap = { page = (page + 1) % pages.size },
-        )
+        ActionsOnlySlot {
+            ActionsOnlyTextButton(
+                label = "•".repeat(page + 1),
+                active = false,
+                onTap = { page = (page + 1) % pages.size },
+            )
+        }
     }
 }
 
@@ -158,5 +169,15 @@ private fun ActionsOnlyTextButton(label: String, active: Boolean, onTap: () -> U
             selector = if (active) SnyggSelector.PRESSED else null,
             text = label,
         )
+    }
+}
+
+@Composable
+private fun RowScope.ActionsOnlySlot(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.weight(1f).fillMaxHeight(),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }

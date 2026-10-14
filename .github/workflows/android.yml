@@ -22,6 +22,15 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build.log
         shell: bash
+      - name: Surface errors as annotation
+        if: failure()
+        shell: bash
+        run: |
+          {
+            grep -n -E "^e: |What went wrong|Execution failed|Could not |error:" -A3 build.log | head -80
+          } > errors.txt || true
+          msg=$(sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g' errors.txt)
+          echo "::error title=Build errors::$msg"
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4

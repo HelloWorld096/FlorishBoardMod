@@ -50,6 +50,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridS
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.automirrored.outlined.Backspace
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.filled.FilterListOff
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.SpaceBar
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.ToggleOff
@@ -100,6 +102,9 @@ import dev.patrickgold.florisboard.ime.media.KeyboardLikeButton
 import dev.patrickgold.florisboard.ime.smartbar.AnimationDuration
 import dev.patrickgold.florisboard.ime.smartbar.VerticalEnterTransition
 import dev.patrickgold.florisboard.ime.smartbar.VerticalExitTransition
+import dev.patrickgold.florisboard.ime.text.key.KeyCode
+import dev.patrickgold.florisboard.ime.text.key.KeyType
+import androidx.compose.foundation.layout.fillMaxHeight
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
@@ -199,48 +204,32 @@ fun ClipboardInputLayout(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 )
             }
-            SnyggText(
-                elementName = FlorisImeUi.ClipboardHeaderText.elementName,
-                modifier = Modifier.weight(1f),
-                text = stringRes(R.string.clipboard__header_title),
-            )
-            SnyggIconButton(
+            // Typing shortcuts: space (wide), full stop, comma, forward slash, enter
+            KeyboardLikeButton(
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                inputEventDispatcher = keyboardManager.inputEventDispatcher,
+                keyData = TextKeyData.SPACE,
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                onClick = { scope.launch { prefs.clipboard.historyEnabled.set(!historyEnabled) } },
-                modifier = sizeModifier.autoMirrorForRtl(),
-                enabled = !deviceLocked && !isPopupSurfaceActive(),
             ) {
-                SnyggIcon(
-                    imageVector = if (historyEnabled) {
-                        Icons.Default.ToggleOn
-                    } else {
-                        Icons.Default.ToggleOff
-                    },
-                )
+                SnyggIcon(imageVector = Icons.Default.SpaceBar)
             }
-            SnyggIconButton(
-                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                onClick = { showClearAllHistory = true },
-                modifier = sizeModifier.autoMirrorForRtl(),
-                enabled = !deviceLocked && historyEnabled && filteredHistory.all.isNotEmpty() && !isPopupSurfaceActive(),
-            ) {
-                SnyggIcon(
-                    imageVector = Icons.Default.DeleteSweep,
-                )
+            for (symbol in listOf('.', ',', '/')) {
+                KeyboardLikeButton(
+                    modifier = sizeModifier,
+                    inputEventDispatcher = keyboardManager.inputEventDispatcher,
+                    keyData = TextKeyData(type = KeyType.CHARACTER, code = symbol.code, label = symbol.toString()),
+                    elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
+                ) {
+                    SnyggText(text = symbol.toString())
+                }
             }
-            SnyggIconButton(
-                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                onClick = { isFilterRowShown = !isFilterRowShown },
+            KeyboardLikeButton(
                 modifier = sizeModifier,
-                enabled = !deviceLocked && historyEnabled && unfilteredHistory.all.isNotEmpty() && !isPopupSurfaceActive(),
+                inputEventDispatcher = keyboardManager.inputEventDispatcher,
+                keyData = TextKeyData(type = KeyType.ENTER_EDITING, code = KeyCode.ENTER, label = "enter"),
+                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
             ) {
-                SnyggIcon(
-                    imageVector = if (!isFilterRowShown) {
-                        Icons.Default.FilterList
-                    } else {
-                        Icons.Default.FilterListOff
-                    },
-                )
+                SnyggIcon(imageVector = Icons.AutoMirrored.Filled.KeyboardReturn)
             }
             KeyboardLikeButton(
                 modifier = sizeModifier,

@@ -35,10 +35,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import dev.patrickgold.florisboard.FlorisImeService
+import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
-import org.florisboard.lib.snygg.SnyggSelector
 import org.florisboard.lib.snygg.ui.SnyggBox
 import org.florisboard.lib.snygg.ui.SnyggRow
 import org.florisboard.lib.snygg.ui.SnyggText
@@ -148,10 +148,11 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
 @Composable
 private fun ActionsOnlyTextButton(label: String, active: Boolean, onTap: () -> Unit) {
     val inputFeedbackController = FlorisImeService.inputFeedbackController()
-    val elementName = FlorisImeUi.SmartbarActionKey.elementName
+    // A latched modifier is drawn with the theme's Enter key style (accent background), so it is obvious at a glance.
+    val elementName = if (active) FlorisImeUi.Key.elementName else FlorisImeUi.SmartbarActionKey.elementName
     SnyggBox(
         elementName = elementName,
-        selector = if (active) SnyggSelector.PRESSED else null,
+        attributes = if (active) mapOf(FlorisImeUi.Attr.Code to KeyCode.ENTER) else emptyMap(),
         clickAndSemanticsModifier = Modifier
             .aspectRatio(1f)
             .pointerInput(onTap) {
@@ -165,8 +166,7 @@ private fun ActionsOnlyTextButton(label: String, active: Boolean, onTap: () -> U
         contentAlignment = Alignment.Center,
     ) {
         SnyggText(
-            elementName = "$elementName-text",
-            selector = if (active) SnyggSelector.PRESSED else null,
+            elementName = "${FlorisImeUi.SmartbarActionKey.elementName}-text",
             text = label,
         )
     }

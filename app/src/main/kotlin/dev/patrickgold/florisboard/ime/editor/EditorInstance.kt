@@ -40,6 +40,7 @@ import dev.patrickgold.florisboard.ime.text.composing.Composer
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.lib.ext.ExtensionComponentName
+import dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate
 import dev.patrickgold.florisboard.nlpManager
 import dev.patrickgold.florisboard.subtypeManager
 import java.util.concurrent.atomic.AtomicInteger
@@ -198,7 +199,57 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             punctuationRule.symbolsPrecedingAutoSpace.contains(text.first())
     }
 
+    /** Previous whole word before [text] (ignoring spaces), or null if the text before ends in punctuation/start. */
+    private fun previousWordOf(text: String): String? {
+        val trimmed = text.trimEnd(' ')
+        if (trimmed.isEmpty() || !(trimmed.last().isLetter() || trimmed.last() == '\'')) return null
+        return trimmed.takeLastWhile { it.isLetter() || it == '\'' }.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * Learns the word that is currently being typed (the composing word ending at the cursor). Called right before a
+     * word separator is committed. [NlpManager.learnWord] decides whether learning is allowed at all.
+     */
+    fun learnCurrentWord() {
+        val content = activeContent
+        val composing = content.composing
+        if (!composing.isValid || content.selection.isNotValid || composing.end != content.selection.start) return
+        val word = content.composingText
+        if (word.isEmpty()) return
+        nlpManager.learnWord(word, previousWordOf(content.textBeforeSelection.removeSuffix(word)))
+    }
+
+    fun learnAcceptedWord(candidate: SuggestionCandidate) {
+        val content = activeContent
+        val word = candidate.text.toString()
+        val before = when {
+            candidate is RangedWordCandidate -> content.text.take((candidate.replaceRange.start - content.offset).coerceAtLeast(0))
+            content.composing.isValid -> content.textBeforeSelection.removeSuffix(content.composingText)
+            else -> content.textBeforeSelection
+        }
+        nlpManager.learnWord(word, previousWordOf(before))
+    }
+
+    /** Replaces the exact word range of [candidate] (cursor inside an existing word) with the suggested word. */
+    fun commitRangedReplacement(candidate: RangedWordCandidate): Boolean {
+        if (activeInfo.isRawInputEditor) return false
+        val ic = currentInputConnection() ?: return false
+        val range = candidate.replaceRange
+        val content = activeContent
+        val local = EditorRange(range.start - content.offset, range.end - content.offset)
+        // Make sure the editor still contains the word we generated the suggestion for.
+        if (local.start < 0 || local.end > content.text.length ||
+            content.text.substring(local.start, local.end) != candidate.originalText) return false
+        ic.beginBatchEdit()
+        ic.setComposingRegion(range.start, range.end)
+        ic.setComposingText(candidate.text.toString(), 1)
+        ic.finishComposingText()
+        ic.endBatchEdit()
+        return true
+    }
+
     override fun commitChar(char: String): Boolean {
+        if (char.isNotEmpty() && !(char[0].isLetter() || char[0] == '\'')) learnCurrentWord()
         val isInsertAutoSpaceBeforeChar = shouldInsertAutoSpaceBefore(char)
         val isInsertAutoSpaceAfterChar = shouldInsertAutoSpaceAfter(char)
         val isDeletePreviousSpace = isInsertAutoSpaceAfterChar && autoSpace.isActive
@@ -230,6 +281,7 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
      * @return True on success, false if an error occurred or the input connection is invalid.
      */
     override fun commitText(text: String): Boolean {
+        if (text.isNotEmpty() && !(text[0].isLetter() || text[0] == '\'')) learnCurrentWord()
         val isPhantomSpaceActive = phantomSpace.determine(text)
         autoSpace.setInactive()
         phantomSpace.setInactive()

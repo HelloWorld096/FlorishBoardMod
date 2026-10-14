@@ -287,11 +287,37 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
     }
 
+    /**
+     * Long press on the page dots: turns the suggestion row (and with it, learning) on or off. The suggestion bar's
+     * visibility *is* the learning switch, so with the bar hidden the keyboard records nothing.
+     */
+    fun toggleSuggestionBar() {
+        scope.launch {
+            val enabled = !prefs.suggestion.enabled.get()
+            prefs.suggestion.enabled.set(enabled)
+            activeState.isComposingEnabled = enabled &&
+                activeState.keyVariation != dev.patrickgold.florisboard.ime.text.key.KeyVariation.PASSWORD &&
+                activeState.keyboardMode != KeyboardMode.NUMERIC &&
+                activeState.keyboardMode != KeyboardMode.PHONE &&
+                activeState.keyboardMode != KeyboardMode.PHONE2
+            if (enabled) {
+                editorInstance.refreshComposing()
+                resetSuggestions(editorInstance.activeContent)
+            } else {
+                nlpManager.clearSuggestions()
+            }
+        }
+    }
+
     fun commitCandidate(candidate: SuggestionCandidate) {
         scope.launch {
             candidate.sourceProvider?.notifySuggestionAccepted(subtypeManager.activeSubtype, candidate)
         }
+        if (candidate !is ClipboardSuggestionCandidate) {
+            editorInstance.learnAcceptedWord(candidate)
+        }
         when (candidate) {
+            is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate -> editorInstance.commitRangedReplacement(candidate)
             is ClipboardSuggestionCandidate -> editorInstance.commitClipboardItem(candidate.clipboardItem)
             else -> editorInstance.commitCompletion(candidate)
         }
@@ -484,6 +510,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Handles a [KeyCode.ENTER] event.
      */
     private fun handleEnter() {
+        editorInstance.learnCurrentWord()
         val info = editorInstance.activeInfo
         val isShiftPressed = inputEventDispatcher.isPressed(KeyCode.SHIFT)
         if (editorInstance.tryPerformEnterCommitRaw()) {

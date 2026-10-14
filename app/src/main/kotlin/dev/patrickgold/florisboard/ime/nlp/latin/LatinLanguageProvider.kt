@@ -23,7 +23,10 @@ import dev.patrickgold.florisboard.ime.editor.EditorContent
 import dev.patrickgold.florisboard.ime.nlp.SpellingProvider
 import dev.patrickgold.florisboard.ime.nlp.SpellingResult
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionProvider
+import dev.patrickgold.florisboard.ime.nlp.WordSuggestionCandidate
+import dev.patrickgold.florisboard.ime.editor.EditorRange
 import dev.patrickgold.florisboard.lib.devtools.flogDebug
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,48 +36,39 @@ import kotlinx.serialization.json.Json
 import org.florisboard.lib.android.readText
 import org.florisboard.lib.kotlin.guardedByLock
 
-class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProvider {
+class LatinLanguageProvider(context: Context, private val userDictionary: UserDictionary) : SpellingProvider, SuggestionProvider {
     companion object {
         // Default user ID used for all subtypes, unless otherwise specified.
         // See `ime/core/Subtype.kt` Line 210 and 211 for the default usage
         const val ProviderId = "org.florisboard.nlp.providers.latin"
+
+        fun isWordChar(c: Char) = c.isLetter() || c == '\''
+        private const val MAX_RESULTS = 6
     }
 
     private val appContext by context.appContext()
 
     private val wordData = guardedByLock { mutableMapOf<String, Int>() }
     private val wordDataSerializer = MapSerializer(String.serializer(), Int.serializer())
+    @Volatile private var engine: SuggestionEngine? = null
 
     override val providerId = ProviderId
 
-    override suspend fun create() {
-        // Here we initialize our provider, set up all things which are not language dependent.
-    }
+    override suspend fun create() {}
 
     override suspend fun preload(subtype: Subtype) = withContext(Dispatchers.IO) {
-        // Here we have the chance to preload dictionaries and prepare a neural network for a specific language.
-        // Is kept in sync with the active keyboard subtype of the user, however a new preload does not necessary mean
-        // the previous language is not needed anymore (e.g. if the user constantly switches between two subtypes)
+        ensureEngine()
+        Unit
+    }
 
-        // To read a file from the APK assets the following methods can be used:
-        // appContext.assets.open()
-        // appContext.assets.reader()
-        // appContext.assets.bufferedReader()
-        // appContext.assets.readText()
-        // To copy an APK file/dir to the file system cache (appContext.cacheDir), the following methods are available:
-        // appContext.assets.copy()
-        // appContext.assets.copyRecursively()
-
-        // The subtype we get here contains a lot of data, however we are only interested in subtype.primaryLocale and
-        // subtype.secondaryLocales.
-
-        wordData.withLock { wordData ->
+    private suspend fun ensureEngine(): SuggestionEngine {
+        engine?.let { return it }
+        return wordData.withLock { wordData ->
             if (wordData.isEmpty()) {
-                // Here we use readText() because the test dictionary is a json dictionary
                 val rawData = appContext.assets.readText("ime/dict/data.json")
-                val jsonData = Json.decodeFromString(wordDataSerializer, rawData)
-                wordData.putAll(jsonData)
+                wordData.putAll(Json.decodeFromString(wordDataSerializer, rawData))
             }
+            engine ?: SuggestionEngine(wordData, userDictionary).also { engine = it }
         }
     }
 
@@ -87,15 +81,10 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
         allowPossiblyOffensive: Boolean,
         isPrivateSession: Boolean,
     ): SpellingResult {
-        return when (word.lowercase()) {
-            // Use typo for typing errors
-            "typo" -> SpellingResult.typo(arrayOf("typo1", "typo2", "typo3"))
-            // Use grammar error if the algorithm can detect this. On Android 11 and lower grammar errors are visually
-            // marked as typos due to a lack of support
-            "gerror" -> SpellingResult.grammarError(arrayOf("grammar1", "grammar2", "grammar3"))
-            // Use valid word for valid input
-            else -> SpellingResult.validWord()
-        }
+        val eng = ensureEngine()
+        if (word.length < 2 || word.any { !isWordChar(it) } || eng.isKnown(word)) return SpellingResult.validWord()
+        val fixes = eng.correct(word, maxSuggestionCount.coerceAtLeast(1)).map { it.word }
+        return if (fixes.isEmpty()) SpellingResult.unspecified() else SpellingResult.typo(fixes.toTypedArray())
     }
 
     override suspend fun suggest(
@@ -104,26 +93,59 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
         maxCandidateCount: Int,
         allowPossiblyOffensive: Boolean,
         isPrivateSession: Boolean,
-    ): List<SuggestionCandidate> {
-        return emptyList()
-        /*val word = content.composingText.ifBlank { "next" }
-        val suggestions = buildList {
-            for (n in 0 until maxCandidateCount) {
-                add(WordSuggestionCandidate(
-                    text = "$word$n",
-                    secondaryText = if (n % 2 == 1) "secondary" else null,
-                    confidence = 0.5,
-                    isEligibleForAutoCommit = false,//n == 0 && word.startsWith("auto"),
-                    // We set ourselves as the source provider so we can get notify events for our candidate
-                    sourceProvider = this@LatinLanguageProvider,
-                ))
+    ): List<SuggestionCandidate> = withContext(Dispatchers.Default) {
+        val sel = content.localSelection
+        if (sel.isNotValid || !sel.isCursorMode) return@withContext emptyList()
+        val eng = ensureEngine()
+        val text = content.text
+        val cursor = sel.start.coerceIn(0, text.length)
+
+        // The word the cursor sits in or touches, including the part after the cursor. This is what makes tapping into
+        // an old, misspelled word produce corrections for the *whole* word.
+        var start = cursor
+        while (start > 0 && isWordChar(text[start - 1])) start--
+        var end = cursor
+        while (end < text.length && isWordChar(text[end])) end++
+        val word = text.substring(start, end)
+        val before = text.substring(0, start)
+        val previousWord = run {
+            val trimmed = before.trimEnd(' ')
+            if (trimmed.isNotEmpty() && isWordChar(trimmed.last())) {
+                trimmed.takeLastWhile { isWordChar(it) }.takeIf { it.isNotEmpty() }
+            } else null
+        }
+
+        val scored: List<ScoredWord> = when {
+            word.isEmpty() -> {
+                if (before.isEmpty() || before.last() == ' ' || before.last() == '\n') {
+                    eng.nextWords(previousWord, MAX_RESULTS)
+                } else emptyList()
+            }
+            else -> {
+                val completions = eng.complete(word, MAX_RESULTS)
+                val corrections = if (eng.isKnown(word)) emptyList() else eng.correct(word, MAX_RESULTS)
+                (completions + corrections).sortedByDescending { it.score }.distinctBy { it.word }.take(MAX_RESULTS)
             }
         }
-        return suggestions*/
+        val composingMatchesWord = content.localComposing.let { it.isValid && it.start == start && it.end == end }
+        val absolute = EditorRange(start + content.offset, end + content.offset)
+        scored.map { sw ->
+            val shown = matchCase(sw.word, word)
+            if (word.isEmpty() || composingMatchesWord) {
+                WordSuggestionCandidate(text = shown, confidence = sw.score.coerceIn(0.0, 1.0), sourceProvider = this@LatinLanguageProvider)
+            } else {
+                RangedWordCandidate(text = shown, originalText = word, replaceRange = absolute, confidence = sw.score.coerceIn(0.0, 1.0), sourceProvider = this@LatinLanguageProvider)
+            }
+        }
+    }
+
+    private fun matchCase(suggestion: String, typed: String): String = when {
+        typed.length > 1 && typed.all { it.isUpperCase() || !it.isLetter() } -> suggestion.uppercase()
+        typed.isNotEmpty() && typed[0].isUpperCase() -> suggestion.replaceFirstChar { it.uppercase() }
+        else -> suggestion
     }
 
     override suspend fun notifySuggestionAccepted(subtype: Subtype, candidate: SuggestionCandidate) {
-        // We can use flogDebug, flogInfo, flogWarning and flogError for debug logging, which is a wrapper for Logcat
         flogDebug { candidate.toString() }
     }
 
@@ -132,8 +154,8 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
     }
 
     override suspend fun removeSuggestion(subtype: Subtype, candidate: SuggestionCandidate): Boolean {
-        flogDebug { candidate.toString() }
-        return false
+        userDictionary.remove(candidate.text.toString())
+        return true
     }
 
     override suspend fun getListOfWords(subtype: Subtype): List<String> {
@@ -144,8 +166,5 @@ class LatinLanguageProvider(context: Context) : SpellingProvider, SuggestionProv
         return wordData.withLock { it.getOrDefault(word, 0) / 255.0 }
     }
 
-    override suspend fun destroy() {
-        // Here we have the chance to de-allocate memory and finish our work. However this might never be called if
-        // the app process is killed (which will most likely always be the case).
-    }
+    override suspend fun destroy() {}
 }

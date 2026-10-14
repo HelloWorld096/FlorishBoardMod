@@ -94,25 +94,25 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
                 key(TextKeyData.ARROW_LEFT),
                 key(TextKeyData.ARROW_RIGHT),
             ),
-            // Page 2: ctrl, shift, forward delete, up, down, undo, redo
+            // Page 2: ctrl, shift, esc, home, end, up, down
             listOf(
                 ActionsOnlyItem.Text("Ctrl", { LatchedModifiers.ctrl }) { LatchedModifiers.ctrl = !LatchedModifiers.ctrl },
                 ActionsOnlyItem.Text("Shift", { LatchedModifiers.shift }) { LatchedModifiers.shift = !LatchedModifiers.shift },
-                key(TextKeyData.FORWARD_DELETE),
-                key(TextKeyData.ARROW_UP),
-                key(TextKeyData.ARROW_DOWN),
-                key(TextKeyData.UNDO),
-                key(TextKeyData.REDO),
-            ),
-            // Page 3: esc, alt, home, end, tab, page up, page down
-            listOf(
                 ActionsOnlyItem.Text("Esc") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_ESCAPE) },
-                ActionsOnlyItem.Text("Alt", { LatchedModifiers.alt }) { LatchedModifiers.alt = !LatchedModifiers.alt },
                 ActionsOnlyItem.Text("Home") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_MOVE_HOME) },
                 ActionsOnlyItem.Text("End") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_MOVE_END) },
-                ActionsOnlyItem.Text("Tab") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_TAB) },
+                key(TextKeyData.ARROW_UP),
+                key(TextKeyData.ARROW_DOWN),
+            ),
+            // Page 3: alt, pgup, pgdn, tab, delete, undo, redo
+            listOf(
+                ActionsOnlyItem.Text("Alt", { LatchedModifiers.alt }) { LatchedModifiers.alt = !LatchedModifiers.alt },
                 ActionsOnlyItem.Text("PgUp") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_PAGE_UP) },
                 ActionsOnlyItem.Text("PgDn") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_PAGE_DOWN) },
+                ActionsOnlyItem.Text("Tab") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_TAB) },
+                key(TextKeyData.FORWARD_DELETE),
+                key(TextKeyData.UNDO),
+                key(TextKeyData.REDO),
             ),
         )
     }
@@ -139,13 +139,20 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
                 active = false,
                 small = false,
                 onTap = { page = (page + 1) % pages.size },
+                onLongPress = { keyboardManager.toggleSuggestionBar() },
             )
         }
     }
 }
 
 @Composable
-private fun ActionsOnlyTextButton(label: String, active: Boolean, small: Boolean = true, onTap: () -> Unit) {
+private fun ActionsOnlyTextButton(
+    label: String,
+    active: Boolean,
+    small: Boolean = true,
+    onLongPress: (() -> Unit)? = null,
+    onTap: () -> Unit,
+) {
     val inputFeedbackController = FlorisImeService.inputFeedbackController()
     val elementName = FlorisImeUi.SmartbarActionKey.elementName
     // Locked state: only the text color changes (to the theme's accent, taken from the Enter key's background).
@@ -155,8 +162,14 @@ private fun ActionsOnlyTextButton(label: String, active: Boolean, small: Boolean
         elementName = elementName,
         clickAndSemanticsModifier = Modifier
             .aspectRatio(1f)
-            .pointerInput(onTap) {
+            .pointerInput(onTap, onLongPress) {
                 detectTapGestures(
+                    onLongPress = onLongPress?.let { lp ->
+                        {
+                            inputFeedbackController?.keyPress(TextKeyData.UNSPECIFIED)
+                            lp()
+                        }
+                    },
                     onTap = {
                         inputFeedbackController?.keyPress(TextKeyData.UNSPECIFIED)
                         onTap()
@@ -169,7 +182,7 @@ private fun ActionsOnlyTextButton(label: String, active: Boolean, small: Boolean
             Text(
                 text = label,
                 color = if (active) accentStyle.background(default = Color(0xFF4CAF50)) else baseStyle.foreground(),
-                fontSize = 11.sp,
+                fontSize = 13.sp,
                 fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
             )

@@ -95,13 +95,23 @@ fun Smartbar() {
     val prefs by FlorisPreferenceStore
     val smartbarEnabled by prefs.smartbar.enabled.observeAsState()
     val extendedActionsPlacement by prefs.smartbar.extendedActionsPlacement.observeAsState()
+    val smartbarLayoutPref by prefs.smartbar.layout.observeAsState()
+    val suggestionBarOn by prefs.suggestion.enabled.observeAsState()
 
     AnimatedVisibility(
         visible = smartbarEnabled,
         enter = VerticalEnterTransition,
         exit = VerticalExitTransition,
     ) {
-        when (extendedActionsPlacement) {
+        if (smartbarLayoutPref == SmartbarLayout.ACTIONS_ONLY && suggestionBarOn) {
+            // Dual row: suggestions on top, action row below. Toggled by long-pressing the page dots.
+            SnyggColumn(FlorisImeUi.Smartbar.elementName) {
+                Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
+                    CandidatesRow()
+                }
+                SmartbarMainRow()
+            }
+        } else when (extendedActionsPlacement) {
             ExtendedActionsPlacement.ABOVE_CANDIDATES -> {
                 SnyggColumn(FlorisImeUi.Smartbar.elementName) {
                     SmartbarSecondaryRow()

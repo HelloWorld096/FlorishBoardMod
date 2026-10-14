@@ -169,3 +169,22 @@ data class EmojiSuggestionCandidate(
     override val text = emoji.value
     override val secondaryText = if (showName) emoji.name else null
 }
+
+/**
+ * A word suggestion that replaces an explicit range of the editor text instead of the composing region. Used when the
+ * cursor sits inside (or next to) an existing word, e.g. to correct a misspelled word the user tapped into.
+ *
+ * @property replaceRange Absolute editor range of [originalText].
+ */
+data class RangedWordCandidate(
+    override val text: CharSequence,
+    val originalText: String,
+    val replaceRange: dev.patrickgold.florisboard.ime.editor.EditorRange,
+    override val secondaryText: CharSequence? = null,
+    override val confidence: Double = 0.0,
+    override val isEligibleForAutoCommit: Boolean = false,
+    override val isEligibleForUserRemoval: Boolean = true,
+    override val sourceProvider: SuggestionProvider? = null,
+) : SuggestionCandidate {
+    override val icon: ImageVector? = null
+}

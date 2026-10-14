@@ -671,7 +671,7 @@ abstract class FlorisPreferenceModel : PreferenceModel() {
         )
         val layout = enum(
             key = "smartbar__layout",
-            default = SmartbarLayout.SUGGESTIONS_ACTIONS_SHARED,
+            default = SmartbarLayout.ACTIONS_ONLY,
         )
         val actionArrangement = custom(
             key = "smartbar__action_arrangement",

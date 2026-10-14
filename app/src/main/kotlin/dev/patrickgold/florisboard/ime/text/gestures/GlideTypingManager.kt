@@ -48,17 +48,21 @@ class GlideTypingManager(context: Context) : GlideTypingGesture.Listener {
     private var glideTypingClassifier = StatisticalGlideTypingClassifier(context)
     private var lastTime = System.currentTimeMillis()
 
+    // Glide typing is disabled in this build: swipes are treated as ordinary key touches.
     override fun onGlideComplete(data: GlideTypingGesture.Detector.PointerData) {
+        if (true) return
         updateSuggestionsAsync(MAX_SUGGESTION_COUNT, true) {
             glideTypingClassifier.clear()
         }
     }
 
     override fun onGlideCancelled() {
+        if (true) return
         glideTypingClassifier.clear()
     }
 
     override fun onGlideAddPoint(point: GlideTypingGesture.Detector.Position) {
+        if (true) return
         val normalized = GlideTypingGesture.Detector.Position(point.x, point.y)
 
         this.glideTypingClassifier.addGesturePoint(normalized)

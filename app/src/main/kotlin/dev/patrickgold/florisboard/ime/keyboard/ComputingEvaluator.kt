@@ -240,7 +240,7 @@ fun ComputingEvaluator.computeImageVector(data: KeyData): ImageVector? {
             }
         }
         KeyCode.FORWARD_DELETE -> {
-            Icons.AutoMirrored.Default.ForwardDelete
+            dev.patrickgold.florisboard.lib.compose.ForwardDeleteOutlined
         }
         KeyCode.IME_UI_MODE_MEDIA -> {
             Icons.Default.SentimentSatisfiedAlt

@@ -29,7 +29,8 @@ import dev.patrickgold.florisboard.ime.core.Subtype
 import dev.patrickgold.florisboard.ime.editor.EditorContent
 import dev.patrickgold.florisboard.ime.editor.EditorRange
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSuggestionProvider
-import dev.patrickgold.florisboard.ime.nlp.han.HanShapeBasedLanguageProvider
+import dev.patrickgold.florisboard.ime.nlp.latin.UserDictionary
+import dev.patrickgold.florisboard.ime.text.key.KeyVariation
 import dev.patrickgold.florisboard.ime.nlp.latin.LatinLanguageProvider
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.lib.util.NetworkUtils
@@ -61,12 +62,14 @@ class NlpManager(context: Context) {
     private val subtypeManager by context.subtypeManager()
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    /** On-device learned words. Only ever written through [learnWord], which is gated on the suggestion bar. */
+    val userDictionary = UserDictionary(context)
     private val clipboardSuggestionProvider = ClipboardSuggestionProvider(context)
     private val emojiSuggestionProvider = EmojiSuggestionProvider(context)
     private val providers = guardedByLock {
         mapOf(
-            LatinLanguageProvider.ProviderId to ProviderInstanceWrapper(LatinLanguageProvider(context)),
-            HanShapeBasedLanguageProvider.ProviderId to ProviderInstanceWrapper(HanShapeBasedLanguageProvider(context)),
+            // English only: Han / other-language providers are intentionally not registered.
+            LatinLanguageProvider.ProviderId to ProviderInstanceWrapper(LatinLanguageProvider(context, userDictionary)),
         )
     }
     // lock unnecessary because values constant
@@ -189,6 +192,18 @@ class NlpManager(context: Context) {
                 getSuggestionProvider(subtype).forcesSuggestionOn
             }
         }
+    }
+
+    /**
+     * Learns [word] (and the word before it) into the personal dictionary. This is the single gate for all learning:
+     * nothing is recorded unless the suggestion bar is on, the session is not incognito and the field is not a password.
+     */
+    fun learnWord(word: String, previousWord: String?) {
+        if (!prefs.suggestion.enabled.get()) return
+        if (keyboardManager.activeState.isIncognitoMode) return
+        if (keyboardManager.activeState.keyVariation == KeyVariation.PASSWORD) return
+        if (word.isEmpty() || !word.all { LatinLanguageProvider.isWordChar(it) }) return
+        userDictionary.learn(word, previousWord)
     }
 
     fun isSuggestionOn(): Boolean =

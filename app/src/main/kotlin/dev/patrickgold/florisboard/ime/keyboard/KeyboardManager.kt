@@ -104,7 +104,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     var smartbarVisibleDynamicActionsCount by mutableIntStateOf(0)
     private var lastToastReference = WeakReference<Toast>(null)
 
-    private var lastSuggestionGate: KeyboardMode? = null
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)
     private val _activeEvaluator = MutableStateFlow<ComputingEvaluator>(DefaultComputingEvaluator)
@@ -153,13 +152,6 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
             activeState.collectLatestIn(scope) {
                 updateActiveEvaluators()
-                // Word suggestions are hidden on the numpad / symbol screens, so they have to be recomputed
-                // when the screen changes, not only when the text does.
-                val gate = activeState.keyboardMode
-                if (gate != lastSuggestionGate) {
-                    lastSuggestionGate = gate
-                    resetSuggestions(editorInstance.activeContent)
-                }
             }
             subtypeManager.subtypesFlow.collectLatestIn(scope) {
                 updateActiveEvaluators()

@@ -2,7 +2,7 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, experimental, "english-only-context-touch", "ci-cache" ]
+    branches: [ '**' ]
   pull_request:
     branches: [ main, experimental ]
   workflow_dispatch:
@@ -26,15 +26,9 @@ jobs:
       - name: Set up Gradle with caching
         uses: gradle/actions/setup-gradle@v4
         with:
-          # Caches the Gradle distribution, downloaded dependencies and the task build cache. Runs on any branch may
-          # write their own cache (GitHub scopes them per branch and falls back to the main branch's).
-          cache-read-only: false
-      - name: Cache Android NDK
-        # Gradle otherwise downloads and unpacks this NDK from scratch on every run.
-        uses: actions/cache@v4
-        with:
-          path: /usr/local/lib/android/sdk/ndk/26.1.10909125
-          key: android-ndk-26.1.10909125
+          # GitHub only lets a branch read its own caches and the default branch's. So main writes the one shared
+          # cache and every other branch just reads it, instead of each branch storing its own copy.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK
@@ -44,6 +38,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set +e +o pipefail
           fc=$(grep -c "FROM-CACHE" build.log || true); ut=$(grep -c "UP-TO-DATE" build.log || true)
           ex=$(grep -c -E "^> Task .*[a-zA-Z]$" build.log || true)
           sdk=$(grep -E "Preparing \"Install|Install .*(NDK|CMake|Platform|Build-Tools)" build.log | head -6 | tr '\n' ';')

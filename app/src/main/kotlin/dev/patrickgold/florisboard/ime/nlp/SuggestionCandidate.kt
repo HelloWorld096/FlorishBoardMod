@@ -188,3 +188,29 @@ data class RangedWordCandidate(
 ) : SuggestionCandidate {
     override val icon: ImageVector? = null
 }
+
+/**
+ * A calculator suggestion for an arithmetic expression that ends at the cursor, e.g. `23+60+17` → `23+60+17=100`.
+ *
+ * Tapping it replaces the expression with `expression=result`, long-pressing replaces it with the result only. It
+ * never goes through the dictionary, so it is neither learned nor removable.
+ *
+ * @property replaceRange Absolute editor range of [originalText] (the expression plus an already typed `=`).
+ * @property originalText What the editor currently holds at [replaceRange], used to make sure nothing changed meanwhile.
+ */
+data class MathSuggestionCandidate(
+    val match: MathMatch,
+    val originalText: String,
+    val replaceRange: dev.patrickgold.florisboard.ime.editor.EditorRange,
+) : SuggestionCandidate {
+    val result: String get() = match.result
+    val withEquals: String get() = match.withEquals
+
+    override val text: CharSequence = match.label()
+    override val secondaryText: CharSequence? = null
+    override val confidence: Double = 1.0
+    override val isEligibleForAutoCommit: Boolean = false
+    override val isEligibleForUserRemoval: Boolean = false
+    override val icon: ImageVector? = null
+    override val sourceProvider: SuggestionProvider? = null
+}

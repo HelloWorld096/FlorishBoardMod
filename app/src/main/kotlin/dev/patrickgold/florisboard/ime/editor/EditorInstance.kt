@@ -40,6 +40,7 @@ import dev.patrickgold.florisboard.ime.text.composing.Composer
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.lib.ext.ExtensionComponentName
+import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate
 import dev.patrickgold.florisboard.ime.nlp.latin.LatinLanguageProvider
 import dev.patrickgold.florisboard.ime.nlp.latin.UserDictionary
@@ -260,6 +261,37 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             }
         } finally {
             ic.endBatchEdit()
+        }
+        return ok
+    }
+
+    /**
+     * Replaces the expression of a calculator suggestion: with `expression=result`, or with just the result if
+     * [resultOnly]. Nothing is added after it, so the user can keep typing right away.
+     */
+    fun commitMathReplacement(candidate: MathSuggestionCandidate, resultOnly: Boolean): Boolean {
+        if (activeInfo.isRawInputEditor) return false
+        val ic = currentInputConnection() ?: return false
+        val range = candidate.replaceRange
+        val content = activeContent
+        val local = EditorRange(range.start - content.offset, range.end - content.offset)
+        // Make sure the editor still contains the expression we calculated.
+        if (local.start < 0 || local.end > content.text.length ||
+            content.text.substring(local.start, local.end) != candidate.originalText) return false
+        val replacement = if (resultOnly) candidate.result else candidate.withEquals
+        var ok = false
+        ic.beginBatchEdit()
+        try {
+            ic.finishComposingText()
+            // commitText replaces the composing region, which is exactly the expression.
+            ok = ic.setComposingRegion(range.start, range.end) && ic.commitText(replacement, 1)
+        } finally {
+            ic.endBatchEdit()
+        }
+        if (ok) {
+            phantomSpace.setInactive()
+            autoSpace.setInactive()
+            suggestionSpaceActive = false
         }
         return ok
     }

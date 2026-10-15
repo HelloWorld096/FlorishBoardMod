@@ -25,9 +25,11 @@ import dev.patrickgold.florisboard.clipboardManager
 import dev.patrickgold.florisboard.editorInstance
 import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardItem
 import dev.patrickgold.florisboard.ime.clipboard.provider.ItemType
+import dev.patrickgold.florisboard.ime.ImeUiMode
 import dev.patrickgold.florisboard.ime.core.Subtype
 import dev.patrickgold.florisboard.ime.editor.EditorContent
 import dev.patrickgold.florisboard.ime.editor.EditorRange
+import dev.patrickgold.florisboard.ime.keyboard.KeyboardMode
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSuggestionProvider
 import dev.patrickgold.florisboard.ime.nlp.latin.UserDictionary
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
@@ -211,11 +213,49 @@ class NlpManager(context: Context) {
             || prefs.emoji.suggestionEnabled.get()
             || providerForcesSuggestionOn(subtypeManager.activeSubtype)
 
+    /**
+     * Word and emoji suggestions only make sense while the user is typing text. On the numpad, phone pad, symbol
+     * screens and in the emoji / clipboard panels they are suppressed.
+     */
+    private fun wordSuggestionsAllowed(): Boolean {
+        val state = keyboardManager.activeState
+        if (state.imeUiMode != ImeUiMode.TEXT) return false
+        return when (state.keyboardMode) {
+            KeyboardMode.NUMERIC,
+            KeyboardMode.NUMERIC_ADVANCED,
+            KeyboardMode.PHONE,
+            KeyboardMode.PHONE2,
+            KeyboardMode.SYMBOLS,
+            KeyboardMode.SYMBOLS2 -> false
+            else -> true
+        }
+    }
+
+    /**
+     * The calculator suggestion for an arithmetic expression ending at the cursor, if any. Unlike word suggestions
+     * this also works on the numpad and symbol screens, because that is where people type their numbers.
+     */
+    private fun mathCandidateFor(content: EditorContent): MathSuggestionCandidate? {
+        val state = keyboardManager.activeState
+        if (state.imeUiMode != ImeUiMode.TEXT || state.keyVariation == KeyVariation.PASSWORD) return null
+        val sel = content.localSelection
+        if (sel.isNotValid || !sel.isCursorMode) return null
+        val text = content.text
+        val match = MathExpression.find(text, sel.start.coerceIn(0, text.length)) ?: return null
+        return MathSuggestionCandidate(
+            match = match,
+            originalText = text.substring(match.start, match.end),
+            replaceRange = EditorRange(match.start + content.offset, match.end + content.offset),
+        )
+    }
+
     fun suggest(subtype: Subtype, content: EditorContent) {
         val reqTime = SystemClock.uptimeMillis()
+        val wordsAllowed = wordSuggestionsAllowed()
         scope.launch {
+            val mathCandidate = mathCandidateFor(content)
             val emojiSuggestions = when {
-                prefs.emoji.suggestionEnabled.get() -> {
+                wordsAllowed && prefs.emoji.suggestionEnabled.get() -> {
                     emojiSuggestionProvider.suggest(
                         subtype = subtype,
                         content = content,
@@ -227,6 +267,7 @@ class NlpManager(context: Context) {
                 else -> emptyList()
             }
             val suggestions = when {
+                !wordsAllowed -> emptyList()
                 emojiSuggestions.isNotEmpty() && prefs.emoji.suggestionType.get().prefix.isNotEmpty() -> {
                     emptyList()
                 }
@@ -243,6 +284,7 @@ class NlpManager(context: Context) {
             internalSuggestionsGuard.withLock {
                 if (internalSuggestions.first < reqTime) {
                     internalSuggestions = reqTime to buildList {
+                        if (mathCandidate != null) add(mathCandidate)
                         addAll(emojiSuggestions)
                         addAll(suggestions)
                     }

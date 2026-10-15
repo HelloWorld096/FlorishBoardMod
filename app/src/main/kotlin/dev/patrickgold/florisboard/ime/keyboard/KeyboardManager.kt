@@ -46,6 +46,7 @@ import dev.patrickgold.florisboard.ime.smartbar.quickaction.LatchedModifiers
 import dev.patrickgold.florisboard.ime.input.InputKeyEventReceiver
 import dev.patrickgold.florisboard.ime.input.InputShiftState
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.PunctuationRule
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.onehanded.OneHandedMode
@@ -103,6 +104,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     var smartbarVisibleDynamicActionsCount by mutableIntStateOf(0)
     private var lastToastReference = WeakReference<Toast>(null)
 
+    private var lastSuggestionGate: Pair<KeyboardMode, ImeUiMode>? = null
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)
     private val _activeEvaluator = MutableStateFlow<ComputingEvaluator>(DefaultComputingEvaluator)
@@ -151,6 +153,13 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
             activeState.collectLatestIn(scope) {
                 updateActiveEvaluators()
+                // Word suggestions are hidden on the numpad / symbol / emoji screens, so they have to be recomputed
+                // when the screen changes, not only when the text does.
+                val gate = activeState.keyboardMode to activeState.imeUiMode
+                if (gate != lastSuggestionGate) {
+                    lastSuggestionGate = gate
+                    resetSuggestions(editorInstance.activeContent)
+                }
             }
             subtypeManager.subtypesFlow.collectLatestIn(scope) {
                 updateActiveEvaluators()
@@ -313,10 +322,15 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         scope.launch {
             candidate.sourceProvider?.notifySuggestionAccepted(subtypeManager.activeSubtype, candidate)
         }
-        if (candidate !is ClipboardSuggestionCandidate && candidate !is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate) {
+        if (candidate !is ClipboardSuggestionCandidate &&
+            candidate !is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate &&
+            candidate !is MathSuggestionCandidate
+        ) {
             editorInstance.learnAcceptedWord(candidate)
         }
         when (candidate) {
+            // Tap: "23+60+17" -> "23+60+17=100"
+            is MathSuggestionCandidate -> editorInstance.commitMathReplacement(candidate, resultOnly = false)
             is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate -> {
                 // Only learn once the editor has actually accepted the replacement.
                 if (editorInstance.commitRangedReplacement(candidate)) editorInstance.learnAcceptedWord(candidate)
@@ -324,6 +338,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             is ClipboardSuggestionCandidate -> editorInstance.commitClipboardItem(candidate.clipboardItem)
             else -> editorInstance.commitCompletion(candidate)
         }
+    }
+
+    /** Long press on a calculator suggestion: replaces the whole expression with just its result. */
+    fun commitMathResultOnly(candidate: MathSuggestionCandidate) {
+        editorInstance.commitMathReplacement(candidate, resultOnly = true)
     }
 
     fun commitGesture(word: String) {

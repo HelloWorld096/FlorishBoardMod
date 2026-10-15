@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
@@ -123,10 +124,16 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                     onLongPress = {
                         // Can't use candidate directly
                         val candidateItem = candidates[n]
-                        if (candidateItem.isEligibleForUserRemoval) {
-                            nlpManager.removeSuggestion(subtypeManager.activeSubtype, candidateItem)
-                        } else {
-                            false
+                        when {
+                            // Long press on a calculator suggestion inserts only the result.
+                            candidateItem is MathSuggestionCandidate -> {
+                                keyboardManager.commitMathResultOnly(candidateItem)
+                                true
+                            }
+                            candidateItem.isEligibleForUserRemoval -> {
+                                nlpManager.removeSuggestion(subtypeManager.activeSubtype, candidateItem)
+                            }
+                            else -> false
                         }
                     },
                     longPressDelay = prefs.keyboard.longPressDelay.get().toLong(),

@@ -239,12 +239,16 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         // Make sure the editor still contains the word we generated the suggestion for.
         if (local.start < 0 || local.end > content.text.length ||
             content.text.substring(local.start, local.end) != candidate.originalText) return false
+        var ok = false
         ic.beginBatchEdit()
-        ic.setComposingRegion(range.start, range.end)
-        ic.setComposingText(candidate.text.toString(), 1)
-        ic.finishComposingText()
-        ic.endBatchEdit()
-        return true
+        try {
+            ok = ic.setComposingRegion(range.start, range.end) &&
+                ic.setComposingText(candidate.text.toString(), 1)
+            ic.finishComposingText()
+        } finally {
+            ic.endBatchEdit()
+        }
+        return ok
     }
 
     override fun commitChar(char: String): Boolean {

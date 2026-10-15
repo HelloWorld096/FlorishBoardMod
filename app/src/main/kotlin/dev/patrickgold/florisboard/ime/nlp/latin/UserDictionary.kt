@@ -27,6 +27,12 @@ class UserDictionary(context: Context) {
     )
 
     private val file = File(context.filesDir, "user_dictionary.json")
+    private val tmpFile = File(context.filesDir, "user_dictionary.json.tmp")
+    private val writeLock = Any()
+
+    /** Bumped on every change so caches built from the words can tell when they are stale. */
+    @Volatile var version: Int = 0
+        private set
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
@@ -44,6 +50,8 @@ class UserDictionary(context: Context) {
             }
         } else Data()
     } catch (_: Exception) {
+        // Keep the unreadable file around instead of letting the next save silently overwrite the history.
+        try { file.renameTo(File(file.parentFile, "user_dictionary.json.corrupt")) } catch (_: Exception) {}
         Data()
     }
 
@@ -62,6 +70,7 @@ class UserDictionary(context: Context) {
                 next[w] = (next[w] ?: 0) + 1
             }
             if (data.words.size > MAX_WORDS || data.ngrams.size > MAX_CONTEXTS) prune()
+            version++
         }
         scheduleSave()
     }
@@ -73,12 +82,13 @@ class UserDictionary(context: Context) {
             data.ngrams.keys.removeAll { key -> key.split(' ').contains(w) }
             data.ngrams.values.forEach { it.remove(w) }
             data.blocked.add(w)
+            version++
         }
         scheduleSave()
     }
 
     fun clear() {
-        synchronized(lock) { data = Data() }
+        synchronized(lock) { data = Data(); version++ }
         scheduleSave()
     }
 
@@ -105,11 +115,20 @@ class UserDictionary(context: Context) {
     }
 
     private fun prune() {
-        // Drop the long tail of words and contexts seen only once.
+        // Drop the long tail of words and contexts seen only once, then enforce the hard caps.
         data.words.entries.removeAll { it.value <= 1 }
+        if (data.words.size > MAX_WORDS) {
+            val keep = data.words.entries.sortedByDescending { it.value }.take(MAX_WORDS).map { it.key }.toHashSet()
+            data.words.keys.retainAll(keep)
+        }
         data.ngrams.entries.removeAll { (k, v) ->
             v.entries.removeAll { it.value <= 1 || it.key !in data.words }
             v.isEmpty() || k.split(' ').any { it !in data.words }
+        }
+        if (data.ngrams.size > MAX_CONTEXTS) {
+            val keep = data.ngrams.entries.sortedByDescending { e -> e.value.values.sum() }
+                .take(MAX_CONTEXTS).map { it.key }.toHashSet()
+            data.ngrams.keys.retainAll(keep)
         }
     }
 
@@ -118,9 +137,17 @@ class UserDictionary(context: Context) {
         saveJob = scope.launch {
             delay(3000)
             val text = synchronized(lock) { json.encodeToString(Data.serializer(), data) }
-            try {
-                file.writeText(text)
-            } catch (_: Exception) {
+            // One writer at a time, and write-then-rename so a crash never leaves a truncated history behind.
+            synchronized(writeLock) {
+                try {
+                    tmpFile.writeText(text)
+                    if (!tmpFile.renameTo(file)) {
+                        file.delete()
+                        tmpFile.renameTo(file)
+                    }
+                } catch (_: Exception) {
+                    // Never log words; the next change schedules another attempt.
+                }
             }
         }
     }

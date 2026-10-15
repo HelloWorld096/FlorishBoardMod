@@ -8,12 +8,40 @@ data class ScoredWord(val word: String, val score: Double)
 
 /**
  * Pure-Kotlin English engine: prefix completion, next-word prediction (using the last one, two or three words as
- * context, with back-off) and typo correction with a keyboard- and touch-aware edit distance. Base words come from the
+ * context, with back-off) and typo correction with a keyboard- and touch-aware edit distance (optimal string
+ * alignment: insertions, deletions, substitutions and adjacent transpositions). Base words come from the
  * bundled dictionary, personal words and word sequences from [UserDictionary].
  */
 class SuggestionEngine(private val base: Map<String, Int>, private val user: UserDictionary) {
     private val sortedBase: Array<String> = base.keys.sorted().toTypedArray()
-    private val byLength: Map<Int, List<String>> = base.keys.groupBy { it.length }
+    // Most frequent words first, so the per-bucket scan budget in correct() keeps the likeliest candidates.
+    private val byLength: Map<Int, List<String>> = base.keys.sortedByDescending { base[it] ?: 0 }.groupBy { it.length }
+
+    /**
+     * Immutable snapshot of the personal words, sorted for prefix lookups. The touch path only ever reads the current
+     * snapshot (bounded binary search + short scan); rebuilding happens on the background suggestion path.
+     */
+    private class UserIndex(val words: Array<String>, val counts: IntArray, val map: Map<String, Int>, val version: Int)
+    @Volatile private var userIndex = UserIndex(emptyArray(), IntArray(0), emptyMap(), -1)
+
+    private fun refreshUserIndex() {
+        val v = user.version
+        if (v == userIndex.version) return
+        val map = HashMap<String, Int>()
+        user.forEachWord { w, c -> map[w] = c }
+        val sorted = map.keys.sorted().toTypedArray()
+        userIndex = UserIndex(sorted, IntArray(sorted.size) { map[sorted[it]] ?: 0 }, map, v)
+    }
+
+    private fun userLowerBound(idx: UserIndex, p: String): Int {
+        var lo = 0
+        var hi = idx.words.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (idx.words[mid] < p) lo = mid + 1 else hi = mid
+        }
+        return lo
+    }
 
     /** Prefix sums of word weights over [sortedBase] so the weight of every word starting with some prefix is O(log n). */
     private val prefixWeight: DoubleArray = DoubleArray(sortedBase.size + 1).also { sums ->
@@ -60,6 +88,7 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
     }
 
     fun nextWords(context: List<String>, limit: Int): List<ScoredWord> {
+        refreshUserIndex()
         val out = LinkedHashMap<String, Double>()
         for ((w, s) in contextScores(context)) if (!user.isBlocked(w)) out[w] = 1.0 + s
         for ((w, c) in user.topWords(limit)) out.putIfAbsent(w, 0.5 + userBoost(c))
@@ -68,6 +97,7 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
     }
 
     fun complete(prefix: String, context: List<String>, limit: Int): List<ScoredWord> {
+        refreshUserIndex()
         val p = prefix.lowercase()
         val ctxScores = contextScores(context)
         val out = HashMap<String, Double>()
@@ -80,10 +110,15 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
             }
             i++; seen++
         }
-        user.forEachWord { w, c ->
-            if (w.length > p.length && w.startsWith(p)) {
-                out[w] = (out[w] ?: (0.0 + (ctxScores[w] ?: 0.0) * 0.8)) + 0.4 + userBoost(c)
+        val ui = userIndex
+        var u = userLowerBound(ui, p)
+        var userSeen = 0
+        while (u < ui.words.size && ui.words[u].startsWith(p) && userSeen < 2000) {
+            val w = ui.words[u]
+            if (w.length > p.length) {
+                out[w] = (out[w] ?: ((ctxScores[w] ?: 0.0) * 0.8)) + 0.4 + userBoost(ui.counts[u])
             }
+            u++; userSeen++
         }
         for ((w, s) in ctxScores) {
             if (w.length > p.length && w.startsWith(p) && w !in out && !user.isBlocked(w)) out[w] = 0.4 + s * 0.8
@@ -96,6 +131,7 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
      * actually landed (or null). Swapping a letter for its hint is almost free, because the finger was nearly there.
      */
     fun correct(typed: String, context: List<String>, limit: Int, hints: List<Char?>? = null): List<ScoredWord> {
+        refreshUserIndex()
         val t = typed.lowercase()
         if (t.length < 2) return emptyList()
         val maxCost = when {
@@ -105,11 +141,13 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
         }
         val ctxScores = contextScores(context)
         val out = HashMap<String, Double>()
-        val userWords = HashMap<String, Int>()
-        user.forEachWord { w, c -> userWords[w] = c }
+        val userWords = userIndex.map
+        // One DP matrix reused for every candidate instead of allocating a new one each time.
+        val matrix = Array(t.length + 1) { DoubleArray(t.length + maxCost.toInt() + 2) }
+        var budget = MAX_CORRECTION_CANDIDATES
         fun consider(w: String, freq: Double, userCount: Int) {
             if (w == t || user.isBlocked(w)) return
-            val cost = distance(t, w, maxCost, hints)
+            val cost = distance(t, w, maxCost, hints, matrix)
             if (cost > maxCost) return
             val sim = 1.0 - cost / (maxCost + 0.5)
             val prefixBonus = if (w[0] == t[0]) 0.1 else 0.0
@@ -118,7 +156,12 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
         }
         val lo = (t.length - maxCost.toInt()).coerceAtLeast(1)
         for (len in lo..t.length + maxCost.toInt()) {
-            byLength[len]?.forEach { w -> consider(w, (base[w] ?: 0) / 255.0, userWords[w] ?: 0) }
+            val bucket = byLength[len] ?: continue
+            var n = 0
+            for (w in bucket) {
+                if (n++ >= MAX_PER_BUCKET || budget-- <= 0) break
+                consider(w, (base[w] ?: 0) / 255.0, userWords[w] ?: 0)
+            }
         }
         for ((w, c) in userWords) if (abs(w.length - t.length) <= maxCost.toInt()) consider(w, 0.3, c)
         return out.entries.sortedByDescending { it.value }.take(limit).map { ScoredWord(it.key, it.value) }
@@ -138,17 +181,28 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
             val hi = lowerBound(p + (c + 1))
             weights[k] = prefixWeight[hi] - prefixWeight[lo]
         }
-        user.forEachWord { w, count ->
-            if (w.length > p.length && w.startsWith(p)) {
+        // Snapshot only: bounded binary search plus a short scan, never a walk over the whole personal dictionary.
+        val ui = userIndex
+        var u = userLowerBound(ui, p)
+        var seen = 0
+        while (u < ui.words.size && ui.words[u].startsWith(p) && seen < 300) {
+            val w = ui.words[u]
+            if (w.length > p.length) {
                 val c = w[p.length]
-                if (c in 'a'..'z') weights[c - 'a'] += 1.0 + userBoost(count) * 3.0
+                if (c in 'a'..'z') weights[c - 'a'] += 1.0 + userBoost(ui.counts[u]) * 3.0
             }
+            u++; seen++
         }
         val total = weights.sum()
         if (total <= 0.0) return emptyMap()
         val out = HashMap<Char, Double>()
         for (k in 0 until 26) if (weights[k] > 0.0) out['a' + k] = weights[k] / total
         return out
+    }
+
+    companion object {
+        private const val MAX_PER_BUCKET = 2500
+        private const val MAX_CORRECTION_CANDIDATES = 9000
     }
 
     private fun lowerBound(p: String): Int {
@@ -162,14 +216,13 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
     }
 
     /**
-     * Damerau-Levenshtein where substituting a neighboring QWERTY key costs 0.5 (0.25 if it is the touch hint), a
+     * Optimal string alignment distance where substituting a neighboring QWERTY key costs 0.5 (0.25 if it is the touch hint), a
      * transposition 1 and everything else 1. Returns a value > [limit] early if the words are too far apart.
      */
-    private fun distance(a: String, b: String, limit: Double, hints: List<Char?>?): Double {
+    private fun distance(a: String, b: String, limit: Double, hints: List<Char?>?, d: Array<DoubleArray>): Double {
         val n = a.length
         val m = b.length
         if (abs(n - m) > limit) return limit + 1
-        val d = Array(n + 1) { DoubleArray(m + 1) }
         for (i in 0..n) d[i][0] = i.toDouble()
         for (j in 0..m) d[0][j] = j.toDouble()
         for (i in 1..n) {

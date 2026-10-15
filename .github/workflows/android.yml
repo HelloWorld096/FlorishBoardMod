@@ -2,6 +2,8 @@ name: Build APK
 
 on:
   push:
+    branches: [ main, experimental, "english-only-context-touch" ]
+  pull_request:
     branches: [ main, experimental ]
   workflow_dispatch:
 

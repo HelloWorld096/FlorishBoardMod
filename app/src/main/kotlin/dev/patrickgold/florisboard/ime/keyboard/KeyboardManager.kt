@@ -313,11 +313,14 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         scope.launch {
             candidate.sourceProvider?.notifySuggestionAccepted(subtypeManager.activeSubtype, candidate)
         }
-        if (candidate !is ClipboardSuggestionCandidate) {
+        if (candidate !is ClipboardSuggestionCandidate && candidate !is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate) {
             editorInstance.learnAcceptedWord(candidate)
         }
         when (candidate) {
-            is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate -> editorInstance.commitRangedReplacement(candidate)
+            is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate -> {
+                // Only learn once the editor has actually accepted the replacement.
+                if (editorInstance.commitRangedReplacement(candidate)) editorInstance.learnAcceptedWord(candidate)
+            }
             is ClipboardSuggestionCandidate -> editorInstance.commitClipboardItem(candidate.clipboardItem)
             else -> editorInstance.commitCompletion(candidate)
         }

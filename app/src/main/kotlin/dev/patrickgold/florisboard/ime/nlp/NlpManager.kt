@@ -25,7 +25,6 @@ import dev.patrickgold.florisboard.clipboardManager
 import dev.patrickgold.florisboard.editorInstance
 import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardItem
 import dev.patrickgold.florisboard.ime.clipboard.provider.ItemType
-import dev.patrickgold.florisboard.ime.ImeUiMode
 import dev.patrickgold.florisboard.ime.core.Subtype
 import dev.patrickgold.florisboard.ime.editor.EditorContent
 import dev.patrickgold.florisboard.ime.editor.EditorRange
@@ -214,12 +213,11 @@ class NlpManager(context: Context) {
             || providerForcesSuggestionOn(subtypeManager.activeSubtype)
 
     /**
-     * Word and emoji suggestions only make sense while the user is typing text. On the numpad, phone pad, symbol
-     * screens and in the emoji / clipboard panels they are suppressed.
+     * Word and emoji suggestions only make sense while the user is typing text. On the numpad, phone pad and symbol
+     * screens they are suppressed. They stay available in the emoji / clipboard panels.
      */
     private fun wordSuggestionsAllowed(): Boolean {
         val state = keyboardManager.activeState
-        if (state.imeUiMode != ImeUiMode.TEXT) return false
         return when (state.keyboardMode) {
             KeyboardMode.NUMERIC,
             KeyboardMode.NUMERIC_ADVANCED,
@@ -237,7 +235,7 @@ class NlpManager(context: Context) {
      */
     private fun mathCandidateFor(content: EditorContent): MathSuggestionCandidate? {
         val state = keyboardManager.activeState
-        if (state.imeUiMode != ImeUiMode.TEXT || state.keyVariation == KeyVariation.PASSWORD) return null
+        if (state.keyVariation == KeyVariation.PASSWORD) return null
         val sel = content.localSelection
         if (sel.isNotValid || !sel.isCursorMode) return null
         val text = content.text

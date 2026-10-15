@@ -24,6 +24,7 @@ import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import dev.patrickgold.florisboard.ime.input.InputEventDispatcher
 import dev.patrickgold.florisboard.ime.input.LocalInputFeedbackController
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
+import dev.patrickgold.florisboard.ime.smartbar.SmartbarSuggestionRowForPanels
 import dev.patrickgold.florisboard.ime.keyboard.KeyData
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiData
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiPaletteView
@@ -75,9 +77,11 @@ fun MediaInputLayout(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Column(modifier = modifier.fillMaxWidth()) {
+        SmartbarSuggestionRowForPanels()
         SnyggColumn(
             elementName = FlorisImeUi.Media.elementName,
-            modifier = modifier
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(FlorisImeSizing.imeUiHeight()),
         ) {
@@ -112,6 +116,7 @@ fun MediaInputLayout(
                     Icon(imageVector = Icons.AutoMirrored.Outlined.Backspace, contentDescription = null)
                 }
             }
+        }
         }
     }
 }

@@ -111,17 +111,7 @@ fun Smartbar() {
             // Dual row: suggestions on top, action row below. Toggled by long-pressing the page dots; the suggestion
             // row slides down into view when shown and slides back up when hidden.
             SnyggColumn(FlorisImeUi.Smartbar.elementName) {
-                AnimatedVisibility(
-                    visible = suggestionBarOn,
-                    enter = slideInVertically(tween(AnimationDuration)) { -it } +
-                        expandVertically(tween(AnimationDuration), expandFrom = Alignment.Top),
-                    exit = slideOutVertically(tween(AnimationDuration)) { -it } +
-                        shrinkVertically(tween(AnimationDuration), shrinkTowards = Alignment.Top),
-                ) {
-                    Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
-                        CandidatesRow()
-                    }
-                }
+                ActionsOnlySuggestionRow(visible = suggestionBarOn)
                 SmartbarMainRow()
             }
         } else when (extendedActionsPlacement) {
@@ -158,6 +148,38 @@ fun Smartbar() {
                     SmartbarMainRow()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ActionsOnlySuggestionRow(visible: Boolean) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(tween(AnimationDuration)) { -it } +
+            expandVertically(tween(AnimationDuration), expandFrom = Alignment.Top),
+        exit = slideOutVertically(tween(AnimationDuration)) { -it } +
+            shrinkVertically(tween(AnimationDuration), shrinkTowards = Alignment.Top),
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
+            CandidatesRow()
+        }
+    }
+}
+
+/**
+ * Keeps the toggled-on suggestion row of the actions-only Smartbar layout visible above the emoji and clipboard
+ * panels, so opening them does not make the row disappear and the keyboard jump. Renders nothing in other layouts.
+ */
+@Composable
+fun SmartbarSuggestionRowForPanels() {
+    val prefs by FlorisPreferenceStore
+    val smartbarEnabled by prefs.smartbar.enabled.observeAsState()
+    val smartbarLayoutPref by prefs.smartbar.layout.observeAsState()
+    val suggestionBarOn by prefs.suggestion.enabled.observeAsState()
+    if (smartbarEnabled && smartbarLayoutPref == SmartbarLayout.ACTIONS_ONLY) {
+        SnyggColumn(FlorisImeUi.Smartbar.elementName) {
+            ActionsOnlySuggestionRow(visible = suggestionBarOn)
         }
     }
 }

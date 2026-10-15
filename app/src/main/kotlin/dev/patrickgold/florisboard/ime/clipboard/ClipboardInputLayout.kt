@@ -100,6 +100,7 @@ import dev.patrickgold.florisboard.ime.clipboard.provider.ItemType
 import dev.patrickgold.florisboard.ime.keyboard.FlorisImeSizing
 import dev.patrickgold.florisboard.ime.media.KeyboardLikeButton
 import dev.patrickgold.florisboard.ime.smartbar.AnimationDuration
+import dev.patrickgold.florisboard.ime.smartbar.SmartbarSuggestionRowForPanels
 import dev.patrickgold.florisboard.ime.smartbar.VerticalEnterTransition
 import dev.patrickgold.florisboard.ime.smartbar.VerticalExitTransition
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
@@ -655,8 +656,10 @@ fun ClipboardInputLayout(
         }
     }
 
+    Column(modifier = modifier.fillMaxWidth()) {
+    SmartbarSuggestionRowForPanels()
     SnyggColumn(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .height(FlorisImeSizing.imeUiHeight()),
     ) {
@@ -674,6 +677,7 @@ fun ClipboardInputLayout(
                 HistoryDisabledView()
             }
         }
+    }
     }
 }
 

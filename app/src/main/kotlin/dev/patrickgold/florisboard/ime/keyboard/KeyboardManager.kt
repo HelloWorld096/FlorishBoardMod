@@ -375,6 +375,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             LatchedModifiers.shift
         val isCtrlLatched = LatchedModifiers.ctrl
         val isAltLatched = LatchedModifiers.alt
+        LatchedModifiers.consumeOneShot()
         val content = activeContent
         val selection = content.selection
         when (code) {
@@ -438,17 +439,17 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     /**
-     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row,      * the latched modifiers stay on until toggled off (like caps lock).
+     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row. Ctrl and
+     * Shift turn off afterwards (one-shot), Alt stays latched until toggled off.
      */
     fun sendLatchedKeyEvent(keyEventCode: Int) {
-        editorInstance.sendDownUpKeyEvent(
-            keyEventCode,
-            editorInstance.meta(
-                ctrl = LatchedModifiers.ctrl,
-                alt = LatchedModifiers.alt,
-                shift = LatchedModifiers.shift,
-            ),
+        val meta = editorInstance.meta(
+            ctrl = LatchedModifiers.ctrl,
+            alt = LatchedModifiers.alt,
+            shift = LatchedModifiers.shift,
         )
+        LatchedModifiers.consumeOneShot()
+        editorInstance.sendDownUpKeyEvent(keyEventCode, meta)
     }
 
     /**
@@ -891,7 +892,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     else -> when (data.type) {
                         KeyType.CHARACTER, KeyType.NUMERIC ->{
                             val text = data.asString(isForDisplay = false)
-                            if (trySendLatchedCharCombo(text)) return@batchEdit
+                            // Sends Ctrl/Alt+key if latched; Ctrl and Shift are used up by this key press either way.
+                            val sentAsCombo = trySendLatchedCharCombo(text)
+                            LatchedModifiers.consumeOneShot()
+                            if (sentAsCombo) return@batchEdit
                             if (!UCharacter.isUAlphabetic(UCharacter.codePointAt(text, 0))) {
                                 nlpManager.getAutoCommitCandidate()?.let { commitCandidate(it) }
                             }

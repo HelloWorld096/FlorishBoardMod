@@ -49,13 +49,20 @@ import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 
 /**
- * Modifier state that is locked on by the actions-only row (Ctrl / Alt / Shift buttons). Like caps lock, a modifier
- * stays on until its button is tapped again (or a new text field is started). Locked buttons show accent-colored text.
+ * Modifier state set by the actions-only row (Ctrl / Alt / Shift buttons). Ctrl and Shift are one-shot: they turn off
+ * again after the next key press ([consumeOneShot]). Alt stays on until its button is tapped again, and everything is
+ * cleared when a new text field starts. Latched buttons show accent-colored text.
  */
 object LatchedModifiers {
     var ctrl by mutableStateOf(false)
     var alt by mutableStateOf(false)
     var shift by mutableStateOf(false)
+
+    /** Called after any key was handled: Ctrl and Shift only last for a single key press. */
+    fun consumeOneShot() {
+        ctrl = false
+        shift = false
+    }
 
     fun reset() {
         ctrl = false

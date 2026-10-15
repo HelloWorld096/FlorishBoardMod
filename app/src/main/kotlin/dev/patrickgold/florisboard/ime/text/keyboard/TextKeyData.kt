@@ -143,7 +143,6 @@ data class TextKeyData(
                 IME_SHOW_UI,
                 IME_HIDE_UI,
                 SETTINGS,
-                VOICE_INPUT,
                 TOGGLE_SMARTBAR_VISIBILITY,
                 TOGGLE_ACTIONS_OVERFLOW,
                 TOGGLE_ACTIONS_EDITOR,
@@ -480,13 +479,6 @@ data class TextKeyData(
             type = KeyType.CHARACTER,
             code = KeyCode.SETTINGS,
             label = "settings",
-        )
-
-        /** Predefined key data for [KeyCode.VOICE_INPUT] */
-        val VOICE_INPUT = TextKeyData(
-            type = KeyType.UNSPECIFIED,
-            code = KeyCode.VOICE_INPUT,
-            label = "voice_input",
         )
 
         /** Predefined key data for [KeyCode.TOGGLE_SMARTBAR_VISIBILITY] */

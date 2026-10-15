@@ -43,6 +43,24 @@ class LatinLanguageProvider(context: Context, private val userDictionary: UserDi
         const val ProviderId = "org.florisboard.nlp.providers.latin"
 
         fun isWordChar(c: Char) = c.isLetter() || c == '\''
+
+        /**
+         * Up to [max] whole words directly before the end of [text], oldest first. Words are only taken from the
+         * current sentence-ish run: spaces between them are fine, any other punctuation or newline stops the walk.
+         */
+        fun previousWordsOf(text: String, max: Int): List<String> {
+            val out = ArrayList<String>()
+            var end = text.length
+            while (out.size < max) {
+                while (end > 0 && text[end - 1] == ' ') end--
+                var start = end
+                while (start > 0 && isWordChar(text[start - 1])) start--
+                if (start == end) break
+                out.add(0, text.substring(start, end))
+                end = start
+            }
+            return out
+        }
         private const val MAX_RESULTS = 6
     }
 
@@ -68,7 +86,7 @@ class LatinLanguageProvider(context: Context, private val userDictionary: UserDi
                 val rawData = appContext.assets.readText("ime/dict/data.json")
                 wordData.putAll(Json.decodeFromString(wordDataSerializer, rawData))
             }
-            engine ?: SuggestionEngine(wordData, userDictionary).also { engine = it }
+            engine ?: SuggestionEngine(wordData, userDictionary).also { engine = it; TouchModel.engine = it }
         }
     }
 
@@ -83,7 +101,7 @@ class LatinLanguageProvider(context: Context, private val userDictionary: UserDi
     ): SpellingResult {
         val eng = ensureEngine()
         if (word.length < 2 || word.any { !isWordChar(it) } || eng.isKnown(word)) return SpellingResult.validWord()
-        val fixes = eng.correct(word, maxSuggestionCount.coerceAtLeast(1)).map { it.word }
+        val fixes = eng.correct(word, precedingWords.takeLast(UserDictionary.MAX_CONTEXT).filter { w -> w.isNotEmpty() && w.all { isWordChar(it) } }, maxSuggestionCount.coerceAtLeast(1)).map { it.word }
         return if (fixes.isEmpty()) SpellingResult.unspecified() else SpellingResult.typo(fixes.toTypedArray())
     }
 
@@ -108,22 +126,19 @@ class LatinLanguageProvider(context: Context, private val userDictionary: UserDi
         while (end < text.length && isWordChar(text[end])) end++
         val word = text.substring(start, end)
         val before = text.substring(0, start)
-        val previousWord = run {
-            val trimmed = before.trimEnd(' ')
-            if (trimmed.isNotEmpty() && isWordChar(trimmed.last())) {
-                trimmed.takeLastWhile { isWordChar(it) }.takeIf { it.isNotEmpty() }
-            } else null
-        }
+        val previousWords = previousWordsOf(before, UserDictionary.MAX_CONTEXT)
 
         val scored: List<ScoredWord> = when {
             word.isEmpty() -> {
                 if (before.isEmpty() || before.last() == ' ' || before.last() == '\n') {
-                    eng.nextWords(previousWord, MAX_RESULTS)
+                    eng.nextWords(previousWords, MAX_RESULTS)
                 } else emptyList()
             }
             else -> {
-                val completions = eng.complete(word, MAX_RESULTS)
-                val corrections = if (eng.isKnown(word)) emptyList() else eng.correct(word, MAX_RESULTS)
+                val completions = eng.complete(word, previousWords, MAX_RESULTS)
+                val corrections = if (eng.isKnown(word)) emptyList() else {
+                    eng.correct(word, previousWords, MAX_RESULTS, TouchModel.hintsFor(word))
+                }
                 (completions + corrections).sortedByDescending { it.score }.distinctBy { it.word }.take(MAX_RESULTS)
             }
         }

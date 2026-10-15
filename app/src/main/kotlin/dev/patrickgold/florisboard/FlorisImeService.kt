@@ -229,28 +229,6 @@ class FlorisImeService : LifecycleInputMethodService() {
             return false
         }
 
-        fun switchToVoiceInputMethod(): Boolean {
-            val ims = FlorisImeServiceReference.get() ?: return false
-            val imm = ims.systemServiceOrNull(InputMethodManager::class) ?: return false
-            val list: List<InputMethodInfo> = imm.enabledInputMethodList
-            for (el in list) {
-                for (i in 0 until el.subtypeCount) {
-                    if (el.getSubtypeAt(i).mode != "voice") continue
-                    if (AndroidVersion.ATLEAST_API28_P) {
-                        ims.switchInputMethod(el.id, el.getSubtypeAt(i))
-                        return true
-                    } else {
-                        ims.window.window?.let { window ->
-                            @Suppress("DEPRECATION")
-                            imm.setInputMethod(window.attributes.token, el.id)
-                            return true
-                        }
-                    }
-                }
-            }
-            ims.showShortToastSync("Failed to find voice IME, do you have one installed?")
-            return false
-        }
     }
 
     private val prefs by FlorisPreferenceStore

@@ -198,12 +198,12 @@ class NlpManager(context: Context) {
      * Learns [word] (and the word before it) into the personal dictionary. This is the single gate for all learning:
      * nothing is recorded unless the suggestion bar is on, the session is not incognito and the field is not a password.
      */
-    fun learnWord(word: String, previousWord: String?) {
+    fun learnWord(word: String, previousWords: List<String>) {
         if (!prefs.suggestion.enabled.get()) return
         if (keyboardManager.activeState.isIncognitoMode) return
         if (keyboardManager.activeState.keyVariation == KeyVariation.PASSWORD) return
         if (word.isEmpty() || !word.all { LatinLanguageProvider.isWordChar(it) }) return
-        userDictionary.learn(word, previousWord)
+        userDictionary.learn(word, previousWords)
     }
 
     fun isSuggestionOn(): Boolean =

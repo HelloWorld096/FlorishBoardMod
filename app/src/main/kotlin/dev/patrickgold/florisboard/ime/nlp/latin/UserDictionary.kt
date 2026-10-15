@@ -19,7 +19,10 @@ class UserDictionary(context: Context) {
     @Serializable
     private data class Data(
         val words: MutableMap<String, Int> = mutableMapOf(),
+        // Legacy single-word contexts, migrated into [ngrams] on load.
         val bigrams: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
+        // Context (1 to 3 previous words joined by a space) -> word that followed -> count.
+        val ngrams: MutableMap<String, MutableMap<String, Int>> = mutableMapOf(),
         val blocked: MutableSet<String> = mutableSetOf(),
     )
 
@@ -31,23 +34,34 @@ class UserDictionary(context: Context) {
     private var saveJob: Job? = null
 
     private fun load(): Data = try {
-        if (file.exists()) json.decodeFromString(Data.serializer(), file.readText()) else Data()
+        if (file.exists()) {
+            json.decodeFromString(Data.serializer(), file.readText()).also { d ->
+                for ((k, v) in d.bigrams) {
+                    val target = d.ngrams.getOrPut(k) { mutableMapOf() }
+                    for ((w, c) in v) target[w] = (target[w] ?: 0) + c
+                }
+                d.bigrams.clear()
+            }
+        } else Data()
     } catch (_: Exception) {
         Data()
     }
 
-    fun learn(word: String, previousWord: String?) {
+    /** [previous] holds the words before [word], oldest first. The last [MAX_CONTEXT] of them are used as context. */
+    fun learn(word: String, previous: List<String>) {
         val w = word.lowercase()
         if (w.length < 2 || w.length > 40) return
         synchronized(lock) {
             if (w in data.blocked) return
             data.words[w] = (data.words[w] ?: 0) + 1
-            val p = previousWord?.lowercase()
-            if (!p.isNullOrEmpty() && p !in data.blocked) {
-                val next = data.bigrams.getOrPut(p) { mutableMapOf() }
+            val ctx = previous.takeLast(MAX_CONTEXT).map { it.lowercase() }
+            for (k in 1..ctx.size) {
+                val words = ctx.takeLast(k)
+                if (words.any { it in data.blocked }) break
+                val next = data.ngrams.getOrPut(words.joinToString(" ")) { mutableMapOf() }
                 next[w] = (next[w] ?: 0) + 1
             }
-            if (data.words.size > MAX_WORDS) prune()
+            if (data.words.size > MAX_WORDS || data.ngrams.size > MAX_CONTEXTS) prune()
         }
         scheduleSave()
     }
@@ -56,8 +70,8 @@ class UserDictionary(context: Context) {
         val w = word.lowercase()
         synchronized(lock) {
             data.words.remove(w)
-            data.bigrams.remove(w)
-            data.bigrams.values.forEach { it.remove(w) }
+            data.ngrams.keys.removeAll { key -> key.split(' ').contains(w) }
+            data.ngrams.values.forEach { it.remove(w) }
             data.blocked.add(w)
         }
         scheduleSave()
@@ -75,10 +89,14 @@ class UserDictionary(context: Context) {
     /** Snapshot of all learned words with their counts. */
     fun words(): Map<String, Int> = synchronized(lock) { HashMap(data.words) }
 
-    /** Words that followed [previousWord] before, most frequent first. */
-    fun followers(previousWord: String, limit: Int): List<Pair<String, Int>> = synchronized(lock) {
-        data.bigrams[previousWord.lowercase()]?.entries
-            ?.sortedByDescending { it.value }?.take(limit)?.map { it.key to it.value } ?: emptyList()
+    /** Words that followed exactly this [context] (1 to 3 words, oldest first) before, with counts. */
+    fun followers(context: List<String>): Map<String, Int> = synchronized(lock) {
+        data.ngrams[context.joinToString(" ") { it.lowercase() }]?.let { HashMap(it) } ?: emptyMap()
+    }
+
+    /** Runs [block] on every learned word without copying the map. Keep [block] short. */
+    fun forEachWord(block: (String, Int) -> Unit) = synchronized(lock) {
+        for ((w, c) in data.words) block(w, c)
     }
 
     /** The user's most used words overall. */
@@ -87,11 +105,11 @@ class UserDictionary(context: Context) {
     }
 
     private fun prune() {
-        // Drop the long tail of words seen only once.
+        // Drop the long tail of words and contexts seen only once.
         data.words.entries.removeAll { it.value <= 1 }
-        data.bigrams.entries.removeAll { (k, v) ->
+        data.ngrams.entries.removeAll { (k, v) ->
             v.entries.removeAll { it.value <= 1 || it.key !in data.words }
-            k !in data.words || v.isEmpty()
+            v.isEmpty() || k.split(' ').any { it !in data.words }
         }
     }
 
@@ -108,6 +126,8 @@ class UserDictionary(context: Context) {
     }
 
     companion object {
+        const val MAX_CONTEXT = 3
         private const val MAX_WORDS = 30_000
+        private const val MAX_CONTEXTS = 80_000
     }
 }

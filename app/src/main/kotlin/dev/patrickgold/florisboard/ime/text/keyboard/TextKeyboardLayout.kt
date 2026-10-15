@@ -73,6 +73,9 @@ import dev.patrickgold.florisboard.ime.text.gestures.GlideTypingGesture
 import dev.patrickgold.florisboard.ime.text.gestures.SwipeAction
 import dev.patrickgold.florisboard.ime.text.gestures.SwipeGesture
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
+import dev.patrickgold.florisboard.ime.nlp.latin.TouchModel
+import kotlin.math.exp
+import kotlin.math.pow
 import dev.patrickgold.florisboard.ime.text.key.KeyType
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
@@ -113,7 +116,7 @@ fun TextKeyboardLayout(
 
     val keyboard = evaluator.keyboard as TextKeyboard
     val glideEnabledInternal by prefs.glide.enabled.observeAsState()
-    val glideEnabled = glideEnabledInternal && evaluator.editorInfo.isRichInputEditor &&
+    val glideEnabled = false && glideEnabledInternal && evaluator.editorInfo.isRichInputEditor &&
         evaluator.state.keyVariation != KeyVariation.PASSWORD
     val glideShowTrail by prefs.glide.showTrail.observeAsState()
     val glideTrailStyle = rememberSnyggThemeQuery(FlorisImeUi.GlideTrail.elementName)
@@ -410,7 +413,7 @@ private class TextKeyboardLayoutController(
     lateinit var keyboard: TextKeyboard
     var size = Size.Zero
 
-    val isGlideEnabled: Boolean get() = prefs.glide.enabled.get() && editorInstance.activeInfo.isRichInputEditor &&
+    val isGlideEnabled: Boolean get() = false && editorInstance.activeInfo.isRichInputEditor &&
         keyboardManager.activeState.keyVariation != KeyVariation.PASSWORD
 
     fun onTouchEventInternal(event: MotionEvent) {
@@ -547,10 +550,80 @@ private class TextKeyboardLayoutController(
         }
     }
 
+    private fun letterOf(key: TextKey): Char? {
+        val code = key.computedData.code
+        return if (code in 'a'.code..'z'.code || code in 'A'.code..'Z'.code) code.toChar() else null
+    }
+
+    /**
+     * Dynamic hit targets: a tap near the edge between two letter keys is resolved by combining how close the finger
+     * was to each key center with how likely each letter is as the next one in the current word. Taps near a key's
+     * center are never changed. Returns the key to press and the second most likely letter (if close).
+     */
+    private fun resolveSpatially(raw: TextKey?, x: Float, y: Float): Pair<TextKey?, Char?> {
+        if (raw == null || !raw.isEnabled || keyboard.mode != KeyboardMode.CHARACTERS) return raw to null
+        if (keyboardManager.activeState.keyVariation == KeyVariation.PASSWORD) return raw to null
+        val rawLetter = letterOf(raw) ?: return raw to null
+        val rw = raw.touchBounds.width
+        val rh = raw.touchBounds.height
+        if (rw <= 0f || rh <= 0f) return raw to null
+
+        val before = editorInstance.activeContent.textBeforeSelection
+        val prefix = before.takeLastWhile { it.isLetter() || it == '\'' }.lowercase()
+        val prior = if (prefix.isNotEmpty()) TouchModel.engine?.letterPrior(prefix).orEmpty() else emptyMap()
+
+        var best: TextKey? = null
+        var bestScore = -1.0
+        var second: Char? = null
+        var secondScore = -1.0
+        var rawD2 = 0.0
+        for (key in keyboard.keys()) {
+            if (!key.isEnabled || !key.isVisible) continue
+            val letter = letterOf(key) ?: continue
+            val cx = (key.touchBounds.left + key.touchBounds.right) / 2f
+            val cy = (key.touchBounds.top + key.touchBounds.bottom) / 2f
+            val dx = ((x - cx) / rw).toDouble()
+            val dy = ((y - cy) / rh).toDouble()
+            val d2 = dx * dx + dy * dy
+            if (key === raw) rawD2 = d2
+            if (d2 > 1.5) continue
+            val likelihood = exp(-d2 / (2.0 * 0.35 * 0.35))
+            val p = if (prior.isEmpty()) 1.0 else (prior[letter.lowercaseChar()] ?: 0.0) + 0.01
+            val score = likelihood * p.pow(0.6)
+            if (score > bestScore) {
+                if (best != null) { second = letterOf(best); secondScore = bestScore }
+                best = key; bestScore = score
+            } else if (score > secondScore) {
+                second = letter; secondScore = score
+            }
+        }
+        val runnerUp = if (second != null && secondScore >= 0.2 * bestScore) second else null
+        // Keep taps near the center of the key under the finger exactly as they are.
+        if (best == null || rawD2 < 0.06) return raw to runnerUp?.takeIf { it != rawLetter }
+        return best to runnerUp
+    }
+
+    private fun recordTouch(key: TextKey, runnerUp: Char?) {
+        val letter = letterOf(key)
+        val code = key.computedData.code
+        when {
+            letter != null -> TouchModel.onLetter(letter, runnerUp)
+            code == KeyCode.DELETE -> TouchModel.onDelete()
+            code == '\''.code -> TouchModel.onLetter('\'', null)
+            code == KeyCode.SPACE || code == KeyCode.ENTER || code > 32 -> TouchModel.clear()
+        }
+    }
+
     private fun onTouchDownInternal(event: MotionEvent, pointer: TouchPointer) {
         flogDebug(LogTopic.TEXT_KEYBOARD_VIEW) { "pointer=$pointer" }
 
-        val key = keyboard.getKeyForPos(event.getX(pointer.index), event.getY(pointer.index))
+        val touchX = event.getX(pointer.index)
+        val touchY = event.getY(pointer.index)
+        val rawKey = keyboard.getKeyForPos(touchX, touchY)
+        val spatial = resolveSpatially(rawKey, touchX, touchY)
+        val key = spatial.first
+        pointer.rawKey = rawKey
+        pointer.runnerUp = spatial.second
         if (key != null && key.isEnabled) {
             key.computedDataOnDown = key.computedData
             pointer.pressedKeyInfo = inputEventDispatcher.sendDown(
@@ -626,10 +699,12 @@ private class TextKeyboardLayoutController(
                     onTouchDownInternal(event, pointer)
                 }
             } else {
-                if ((event.getX(pointer.index) < activeKey.visibleBounds.left - 0.1f * activeKey.visibleBounds.width)
-                    || (event.getX(pointer.index) > activeKey.visibleBounds.right + 0.1f * activeKey.visibleBounds.width)
-                    || (event.getY(pointer.index) < activeKey.visibleBounds.top - 0.35f * activeKey.visibleBounds.height)
-                    || (event.getY(pointer.index) > activeKey.visibleBounds.bottom + 0.35f * activeKey.visibleBounds.height)
+                // The key under the finger can differ from the active key when the touch was resolved spatially.
+                val refKey = pointer.rawKey ?: activeKey
+                if ((event.getX(pointer.index) < refKey.visibleBounds.left - 0.1f * refKey.visibleBounds.width)
+                    || (event.getX(pointer.index) > refKey.visibleBounds.right + 0.1f * refKey.visibleBounds.width)
+                    || (event.getY(pointer.index) < refKey.visibleBounds.top - 0.35f * refKey.visibleBounds.height)
+                    || (event.getY(pointer.index) > refKey.visibleBounds.bottom + 0.35f * refKey.visibleBounds.height)
                 ) {
                     onTouchCancelInternal(event, pointer)
                     onTouchDownInternal(event, pointer)
@@ -651,6 +726,7 @@ private class TextKeyboardLayoutController(
         val initialKey = pointer.initialKey
         val activeKey = pointer.activeKey
         if (initialKey != null && activeKey != null) {
+            if (!pointer.hasTriggeredGestureMove) recordTouch(activeKey, pointer.runnerUp)
             activeKey.isPressed = false
             if (popupUiController.isSuitableForPopups(activeKey)) {
                 val retData = popupUiController.getActiveKeyData(activeKey)
@@ -981,6 +1057,8 @@ private class TextKeyboardLayoutController(
     private class TouchPointer : Pointer() {
         var initialKey: TextKey? = null
         var activeKey: TextKey? = null
+        var rawKey: TextKey? = null
+        var runnerUp: Char? = null
         var hasTriggeredGestureMove: Boolean = false
         var hasTriggeredLongPress: Boolean = false
         var hasTriggeredMassSelection: Boolean = false
@@ -990,6 +1068,8 @@ private class TextKeyboardLayoutController(
             super.reset()
             initialKey = null
             activeKey = null
+            rawKey = null
+            runnerUp = null
             hasTriggeredGestureMove = false
             hasTriggeredLongPress = false
             hasTriggeredMassSelection = false

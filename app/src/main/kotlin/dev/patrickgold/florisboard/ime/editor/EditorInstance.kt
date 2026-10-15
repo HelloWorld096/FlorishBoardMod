@@ -41,6 +41,8 @@ import dev.patrickgold.florisboard.ime.text.key.KeyVariation
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.lib.ext.ExtensionComponentName
 import dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate
+import dev.patrickgold.florisboard.ime.nlp.latin.LatinLanguageProvider
+import dev.patrickgold.florisboard.ime.nlp.latin.UserDictionary
 import dev.patrickgold.florisboard.nlpManager
 import dev.patrickgold.florisboard.subtypeManager
 import java.util.concurrent.atomic.AtomicInteger
@@ -199,12 +201,9 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             punctuationRule.symbolsPrecedingAutoSpace.contains(text.first())
     }
 
-    /** Previous whole word before [text] (ignoring spaces), or null if the text before ends in punctuation/start. */
-    private fun previousWordOf(text: String): String? {
-        val trimmed = text.trimEnd(' ')
-        if (trimmed.isEmpty() || !(trimmed.last().isLetter() || trimmed.last() == '\'')) return null
-        return trimmed.takeLastWhile { it.isLetter() || it == '\'' }.takeIf { it.isNotEmpty() }
-    }
+    /** Up to three whole words before [text] (oldest first); empty if [text] ends in punctuation or at the start. */
+    private fun previousWordsOf(text: String): List<String> =
+        LatinLanguageProvider.previousWordsOf(text, UserDictionary.MAX_CONTEXT)
 
     /**
      * Learns the word that is currently being typed (the composing word ending at the cursor). Called right before a
@@ -216,7 +215,7 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         if (!composing.isValid || content.selection.isNotValid || composing.end != content.selection.start) return
         val word = content.composingText
         if (word.isEmpty()) return
-        nlpManager.learnWord(word, previousWordOf(content.textBeforeSelection.removeSuffix(word)))
+        nlpManager.learnWord(word, previousWordsOf(content.textBeforeSelection.removeSuffix(word)))
     }
 
     fun learnAcceptedWord(candidate: SuggestionCandidate) {
@@ -227,7 +226,7 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             content.composing.isValid -> content.textBeforeSelection.removeSuffix(content.composingText)
             else -> content.textBeforeSelection
         }
-        nlpManager.learnWord(word, previousWordOf(before))
+        nlpManager.learnWord(word, previousWordsOf(before))
     }
 
     /** Replaces the exact word range of [candidate] (cursor inside an existing word) with the suggested word. */

@@ -19,6 +19,10 @@ package dev.patrickgold.florisboard.ime.smartbar
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
@@ -103,11 +107,20 @@ fun Smartbar() {
         enter = VerticalEnterTransition,
         exit = VerticalExitTransition,
     ) {
-        if (smartbarLayoutPref == SmartbarLayout.ACTIONS_ONLY && suggestionBarOn) {
-            // Dual row: suggestions on top, action row below. Toggled by long-pressing the page dots.
+        if (smartbarLayoutPref == SmartbarLayout.ACTIONS_ONLY) {
+            // Dual row: suggestions on top, action row below. Toggled by long-pressing the page dots; the suggestion
+            // row slides down into view when shown and slides back up when hidden.
             SnyggColumn(FlorisImeUi.Smartbar.elementName) {
-                Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
-                    CandidatesRow()
+                AnimatedVisibility(
+                    visible = suggestionBarOn,
+                    enter = slideInVertically(tween(AnimationDuration)) { -it } +
+                        expandVertically(tween(AnimationDuration), expandFrom = Alignment.Top),
+                    exit = slideOutVertically(tween(AnimationDuration)) { -it } +
+                        shrinkVertically(tween(AnimationDuration), shrinkTowards = Alignment.Top),
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().height(FlorisImeSizing.smartbarHeight)) {
+                        CandidatesRow()
+                    }
                 }
                 SmartbarMainRow()
             }

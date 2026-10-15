@@ -112,6 +112,10 @@ android {
             storePassword = "floris-mod"
             keyAlias = "mod"
             keyPassword = "floris-mod"
+            storeType = "pkcs12"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 

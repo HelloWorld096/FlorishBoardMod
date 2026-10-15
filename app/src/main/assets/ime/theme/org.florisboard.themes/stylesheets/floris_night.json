@@ -236,8 +236,13 @@
     "font-size": "16sp"
   },
   "clipboard-header-button": {
+    "border-color": "var(--surface)",
+    "border-width": "1.5dp",
     "margin": "4dp",
     "shape": "circle()"
+  },
+  "clipboard-header-button[code=10]": {
+    "foreground": "var(--primary)"
   },
   "clipboard-header-button:disabled": {
     "foreground": "var(--on-background-disabled)"

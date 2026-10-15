@@ -104,15 +104,15 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
                 key(TextKeyData.ARROW_UP),
                 key(TextKeyData.ARROW_DOWN),
             ),
-            // Page 3: alt, pgup, pgdn, tab, delete, undo, redo
+            // Page 3: alt, pgup, pgdn, undo, redo, tab, delete
             listOf(
                 ActionsOnlyItem.Text("Alt", { LatchedModifiers.alt }) { LatchedModifiers.alt = !LatchedModifiers.alt },
                 ActionsOnlyItem.Text("PgUp") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_PAGE_UP) },
                 ActionsOnlyItem.Text("PgDn") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_PAGE_DOWN) },
-                ActionsOnlyItem.Text("Tab") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_TAB) },
-                key(TextKeyData.FORWARD_DELETE),
                 key(TextKeyData.UNDO),
                 key(TextKeyData.REDO),
+                ActionsOnlyItem.Text("Tab") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_TAB) },
+                key(TextKeyData.FORWARD_DELETE),
             ),
         )
     }

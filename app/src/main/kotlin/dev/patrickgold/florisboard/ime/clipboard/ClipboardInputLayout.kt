@@ -204,7 +204,7 @@ fun ClipboardInputLayout(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 )
             }
-            // Typing shortcuts: space (wide), full stop, comma, forward slash, enter
+            // Typing shortcuts: space (wide), full stop, comma, forward slash, backspace, enter
             KeyboardLikeButton(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 inputEventDispatcher = keyboardManager.inputEventDispatcher,
@@ -226,18 +226,18 @@ fun ClipboardInputLayout(
             KeyboardLikeButton(
                 modifier = sizeModifier,
                 inputEventDispatcher = keyboardManager.inputEventDispatcher,
-                keyData = TextKeyData(type = KeyType.ENTER_EDITING, code = KeyCode.ENTER, label = "enter"),
-                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-            ) {
-                SnyggIcon(imageVector = Icons.AutoMirrored.Filled.KeyboardReturn)
-            }
-            KeyboardLikeButton(
-                modifier = sizeModifier,
-                inputEventDispatcher = keyboardManager.inputEventDispatcher,
                 keyData = TextKeyData.DELETE,
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
             ) {
                 SnyggIcon(imageVector = Icons.AutoMirrored.Outlined.Backspace)
+            }
+            KeyboardLikeButton(
+                modifier = sizeModifier,
+                inputEventDispatcher = keyboardManager.inputEventDispatcher,
+                keyData = TextKeyData(type = KeyType.ENTER_EDITING, code = KeyCode.ENTER, label = "enter"),
+                elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
+            ) {
+                SnyggIcon(imageVector = Icons.AutoMirrored.Filled.KeyboardReturn)
             }
         }
     }

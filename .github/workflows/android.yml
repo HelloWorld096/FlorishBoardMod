@@ -46,6 +46,14 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleMod --stacktrace --build-cache 2>&1 | tee build.log
         shell: bash
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          apk=$(ls app/build/outputs/apk/mod/*.apk | head -1)
+          echo "APK: $apk ($(stat -c %s "$apk") bytes)"
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$bt/apksigner" verify --verbose --print-certs "$apk" 2>&1 | tee apk-verify.txt
+          "$bt/aapt2" dump badging "$apk" 2>&1 | grep -E "^package|sdkVersion|targetSdk|native-code" | tee -a apk-verify.txt
       - name: Build timing summary
         if: always()
         shell: bash
@@ -96,7 +104,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: |
+            build.log
+            apk-verify.txt
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

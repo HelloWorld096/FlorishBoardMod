@@ -7,6 +7,9 @@ on:
     branches: [ main, experimental ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
@@ -23,12 +26,21 @@ jobs:
         with:
           java-version: 17
           distribution: temurin
-      - name: Set up Gradle with caching
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          # GitHub only lets a branch read its own caches and the default branch's. So main writes the one shared
-          # cache and every other branch just reads it, instead of each branch storing its own copy.
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Restore Gradle cache
+        # One cache shared by every branch, stored as a release asset (GitHub's own cache can't be shared between
+        # branches). Gradle's build cache is keyed by task inputs, so branches reuse each other's results safely.
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          if gh release download ci-cache -R "$GITHUB_REPOSITORY" -p gradle-home.tar.zst -O /tmp/gradle-home.tar.zst; then
+            tar -I zstd -xf /tmp/gradle-home.tar.zst -C "$HOME"
+            echo "::notice title=Gradle cache::restored $(du -h /tmp/gradle-home.tar.zst | cut -f1)"
+            rm -f /tmp/gradle-home.tar.zst
+          else
+            echo "::notice title=Gradle cache::none found, cold build"
+          fi
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK
@@ -45,6 +57,31 @@ jobs:
           slow=$(grep -E "^> Task :(app|lib)" build.log | grep -E "R8|minify|dex|Dex|lint|compile.*Kotlin|merge.*Resources|Native|externalNative" | head -12 | tr '\n' ';')
           tot=$(grep -E "BUILD (SUCCESSFUL|FAILED) in" build.log | tail -1)
           echo "::notice title=Gradle summary::tasks executed=$ex from-cache=$fc up-to-date=$ut | $tot | sdk-installs: $sdk | heavy tasks: $slow"
+      - name: Save Gradle cache
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          ./gradlew --stop > /dev/null 2>&1
+          tar -I 'zstd -T0 -3' \
+            --exclude='*.lock' --exclude='gc.properties' --exclude='.gradle/caches/journal-1' \
+            -cf /tmp/gradle-home.tar.zst -C "$HOME" .gradle/caches .gradle/wrapper
+          size=$(stat -c %s /tmp/gradle-home.tar.zst)
+          if [ "$size" -gt 1900000000 ]; then
+            echo "::warning title=Gradle cache::$((size / 1000000)) MB is over the 2 GB asset limit, not saved"
+            exit 0
+          fi
+          gh release view ci-cache -R "$GITHUB_REPOSITORY" > /dev/null 2>&1 || \
+            gh release create ci-cache -R "$GITHUB_REPOSITORY" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "CI Gradle cache (managed by the build workflow, do not delete)" \
+              --notes "Shared Gradle cache restored and updated by every build on every branch."
+          if gh release upload ci-cache /tmp/gradle-home.tar.zst -R "$GITHUB_REPOSITORY" --clobber; then
+            echo "::notice title=Gradle cache::saved $((size / 1000000)) MB"
+          else
+            echo "::warning title=Gradle cache::upload failed (another build may be writing it); keeping the old cache"
+          fi
       - name: Surface errors as annotation
         if: failure()
         shell: bash

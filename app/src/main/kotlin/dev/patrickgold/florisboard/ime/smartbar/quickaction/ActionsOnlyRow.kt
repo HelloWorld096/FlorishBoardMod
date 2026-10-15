@@ -49,18 +49,18 @@ import org.florisboard.lib.snygg.ui.SnyggText
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
 
 /**
- * Modifier state set by the actions-only row (Ctrl / Alt / Shift buttons). Ctrl and Shift are one-shot: they turn off
- * again after the next key press ([consumeOneShot]). Alt stays on until its button is tapped again, and everything is
- * cleared when a new text field starts. Latched buttons show accent-colored text.
+ * Modifier state set by the actions-only row (Ctrl / Alt / Shift buttons). Ctrl, Alt and Shift are one-shot: they turn
+ * off again after the next key press ([consumeOneShot]). Everything is cleared when a new text field starts. Latched buttons show accent-colored text.
  */
 object LatchedModifiers {
     var ctrl by mutableStateOf(false)
     var alt by mutableStateOf(false)
     var shift by mutableStateOf(false)
 
-    /** Called after any key was handled: Ctrl and Shift only last for a single key press. */
+    /** Called after any key was handled: Ctrl, Alt and Shift only last for a single key press. */
     fun consumeOneShot() {
         ctrl = false
+        alt = false
         shift = false
     }
 
@@ -68,6 +68,15 @@ object LatchedModifiers {
         ctrl = false
         alt = false
         shift = false
+    }
+}
+
+/** Which of the three action rows is shown. Kept outside the composable so it can be reset whenever the keyboard is shown or hidden. */
+object ActionsOnlyRowState {
+    var page by mutableIntStateOf(0)
+
+    fun reset() {
+        page = 0
     }
 }
 
@@ -87,7 +96,7 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
     val evaluator by keyboardManager.activeSmartbarEvaluator.collectAsState()
-    var page by remember { mutableIntStateOf(0) }
+    val page = ActionsOnlyRowState.page
 
     val pages = remember {
         listOf(
@@ -145,7 +154,7 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
                 label = "•".repeat(page + 1),
                 active = false,
                 small = false,
-                onTap = { page = (page + 1) % pages.size },
+                onTap = { ActionsOnlyRowState.page = (page + 1) % pages.size },
                 onLongPress = { keyboardManager.toggleSuggestionBar() },
             )
         }

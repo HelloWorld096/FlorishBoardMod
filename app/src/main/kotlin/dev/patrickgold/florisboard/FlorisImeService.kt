@@ -97,6 +97,7 @@ import dev.patrickgold.florisboard.ime.sheet.BottomSheetHostUi
 import dev.patrickgold.florisboard.ime.sheet.isBottomSheetShowing
 import dev.patrickgold.florisboard.ime.smartbar.ExtendedActionsPlacement
 import dev.patrickgold.florisboard.ime.smartbar.SmartbarLayout
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.ActionsOnlyRowState
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsEditorPanel
 import dev.patrickgold.florisboard.ime.text.TextInputLayout
 import dev.patrickgold.florisboard.ime.theme.FlorisImeTheme
@@ -395,6 +396,7 @@ class FlorisImeService : LifecycleInputMethodService() {
             flogInfo(LogTopic.IMS_EVENTS)
         }
         isWindowShown = true
+        ActionsOnlyRowState.reset()
         inputFeedbackController.updateSystemPrefsState()
     }
 
@@ -407,6 +409,7 @@ class FlorisImeService : LifecycleInputMethodService() {
             flogInfo(LogTopic.IMS_EVENTS)
         }
         isWindowShown = false
+        ActionsOnlyRowState.reset()
         activeState.batchEdit {
             activeState.imeUiMode = ImeUiMode.TEXT
             activeState.isActionsOverflowVisible = false

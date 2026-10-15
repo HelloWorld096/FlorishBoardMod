@@ -439,8 +439,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     /**
-     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row. Ctrl and
-     * Shift turn off afterwards (one-shot), Alt stays latched until toggled off.
+     * Sends a raw key event to the editor with the modifiers currently latched by the actions-only row. Ctrl,
+     * Alt and Shift turn off afterwards (one-shot).
      */
     fun sendLatchedKeyEvent(keyEventCode: Int) {
         val meta = editorInstance.meta(

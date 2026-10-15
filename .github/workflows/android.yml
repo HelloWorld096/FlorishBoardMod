@@ -29,6 +29,12 @@ jobs:
           # Caches the Gradle distribution, downloaded dependencies and the task build cache. Runs on any branch may
           # write their own cache (GitHub scopes them per branch and falls back to the main branch's).
           cache-read-only: false
+      - name: Cache Android NDK
+        # Gradle otherwise downloads and unpacks this NDK from scratch on every run.
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/26.1.10909125
+          key: android-ndk-26.1.10909125
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK

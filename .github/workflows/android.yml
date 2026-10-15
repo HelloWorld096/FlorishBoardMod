@@ -2,8 +2,14 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ '**' ]
+  pull_request:
+    branches: [ main, experimental ]
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -17,11 +23,28 @@ jobs:
         with:
           java-version: 17
           distribution: temurin
+      - name: Set up Gradle with caching
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # GitHub only lets a branch read its own caches and the default branch's. So main writes the one shared
+          # cache and every other branch just reads it, instead of each branch storing its own copy.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK
-        run: ./gradlew assembleMod --stacktrace 2>&1 | tee build.log
+        run: ./gradlew assembleMod --stacktrace --build-cache 2>&1 | tee build.log
         shell: bash
+      - name: Build timing summary
+        if: always()
+        shell: bash
+        run: |
+          set +e +o pipefail
+          fc=$(grep -c "FROM-CACHE" build.log || true); ut=$(grep -c "UP-TO-DATE" build.log || true)
+          ex=$(grep -c -E "^> Task .*[a-zA-Z]$" build.log || true)
+          sdk=$(grep -E "Preparing \"Install|Install .*(NDK|CMake|Platform|Build-Tools)" build.log | head -6 | tr '\n' ';')
+          slow=$(grep -E "^> Task :(app|lib)" build.log | grep -E "R8|minify|dex|Dex|lint|compile.*Kotlin|merge.*Resources|Native|externalNative" | head -12 | tr '\n' ';')
+          tot=$(grep -E "BUILD (SUCCESSFUL|FAILED) in" build.log | tail -1)
+          echo "::notice title=Gradle summary::tasks executed=$ex from-cache=$fc up-to-date=$ut | $tot | sdk-installs: $sdk | heavy tasks: $slow"
       - name: Surface errors as annotation
         if: failure()
         shell: bash

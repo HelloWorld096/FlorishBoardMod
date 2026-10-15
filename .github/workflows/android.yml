@@ -2,10 +2,14 @@ name: Build APK
 
 on:
   push:
-    branches: [ main, experimental, "english-only-context-touch" ]
+    branches: [ main, experimental, "english-only-context-touch", "ci-cache" ]
   pull_request:
     branches: [ main, experimental ]
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,10 +23,16 @@ jobs:
         with:
           java-version: 17
           distribution: temurin
+      - name: Set up Gradle with caching
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Caches the Gradle distribution, downloaded dependencies and the task build cache. Runs on any branch may
+          # write their own cache (GitHub scopes them per branch and falls back to the main branch's).
+          cache-read-only: false
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK
-        run: ./gradlew assembleMod --stacktrace 2>&1 | tee build.log
+        run: ./gradlew assembleMod --stacktrace --build-cache 2>&1 | tee build.log
         shell: bash
       - name: Surface errors as annotation
         if: failure()

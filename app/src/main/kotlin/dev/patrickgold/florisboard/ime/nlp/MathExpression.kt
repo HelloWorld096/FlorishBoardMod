@@ -40,31 +40,36 @@ data class MathMatch(
     val withEquals: String
         get() = if (expression.contains(' ')) "$expression = $result" else "$expression=$result"
 
-    /** Text for the suggestion chip. Long expressions are shortened from the left so the result is always visible. */
-    fun label(maxExpressionLength: Int = 20): String {
-        val shown = if (expression.length > maxExpressionLength) {
-            "…" + expression.takeLast(maxExpressionLength - 1).trimStart()
-        } else {
-            expression
-        }
-        return if (shown.contains(' ')) "$shown = $result" else "$shown=$result"
-    }
+    /** Text for the suggestion chip: the full expression, then the result. The chip scrolls if it is too long. */
+    fun label(): String = if (expression.contains(' ')) "$expression = $result" else "$expression=$result"
 }
 
 /**
  * Finds and evaluates an arithmetic expression that ends at the cursor.
  *
  * Supports `+ - * / × ÷ x ^ ( ) %`, decimals, thousands separators (`1,000`), unary minus, implicit multiplication
- * (`2(3+4)`) and any amount of spaces around operators and operands. A percentage on the right of `+`/`-` is taken
- * relative to the left side (`200 + 10%` is `220`), everywhere else it is divided by 100.
+ * (`2(3+4)`) and any amount of spaces around operators and operands.
+ *
+ * Percentages:
+ *  - `150+20%` is 150 plus 20% of 150 (180), `150-20%` is 120.
+ *  - `150*20%` / `150/20%` use 20% as 0.2 (30 / 750).
+ *  - `150%20` (a percent sign between two numbers) is 20% of 150 (30). There is no modulo operator.
  */
 object MathExpression {
     private const val MAX_SCAN = 96
     private const val MAX_NUMBER_DIGITS = 30
     private val MC = MathContext(20, RoundingMode.HALF_UP)
 
-    // Things like 2024-10-15, 15/10/2026 or 1-800-555-1234 are dates/phone numbers, not calculations.
-    private val dateOrPhoneLike = Regex("""\d+([-/]\d+){2,}""")
+    // Dates (2024-10-15, 15/10/2026, 1-2-3) and phone numbers ((555) 123-4567, 555-1234, 98765-43210, +91-98765-43210,
+    // 011-23456789) are not calculations. A hyphen or slash chain of three or more numbers is never treated as maths.
+    private val notMaths = listOf(
+        Regex("""\d+([-/]\d+){2,}"""),
+        Regex("""\(?\d{3}\)?[ -]?\d{3}-\d{4}"""),
+        Regex("""\d{3}-\d{4}"""),
+        Regex("""\d{5}[ -]\d{5}"""),
+        Regex("""\+\d{1,3}[ -]?\(?\d+\)?([ -]\d+)*"""),
+        Regex("""\d{2,5}-\d{6,8}"""),
+    )
 
     private val spanChars = "0123456789.,+-−*/×÷xX^%() =".toSet()
 
@@ -112,7 +117,7 @@ object MathExpression {
 
     /** Evaluates [expr] and formats the result. Null if it is not a valid expression with at least one operator. */
     fun evaluate(expr: String): String? {
-        if (dateOrPhoneLike.matches(expr)) return null
+        if (notMaths.any { it.matches(expr) }) return null
         val tokens = tokenize(expr) ?: return null
         return try {
             val parser = Parser(tokens)
@@ -232,6 +237,13 @@ object MathExpression {
                         if (right.n.signum() == 0) fail()
                         Value(left.n.divide(right.n, MC))
                     }
+                } else if (tok.isOp('%')) {
+                    // "150%20": 20 percent of 150. (A percent sign with nothing after it is handled in postfix().)
+                    p++
+                    val right = unary()
+                    operators++
+                    val factor = if (right.percent) right.n else right.n.divide(BigDecimal(100), MC)
+                    left = Value(left.n.multiply(factor, MC))
                 } else if (tok.kind == '(') {
                     // Implicit multiplication: 2(3+4), (1+2)(3+4)
                     val right = unary()
@@ -270,12 +282,15 @@ object MathExpression {
 
         private fun postfix(): Value {
             var v = primary()
-            while (p < t.size && t[p].isOp('%')) {
+            // A '%' followed by a number or '(' is the "percent of" operator, see term().
+            while (p < t.size && t[p].isOp('%') && !startsOperand(p + 1)) {
                 p++
                 v = Value(v.n.divide(BigDecimal(100), MC), percent = true)
             }
             return v
         }
+
+        private fun startsOperand(i: Int) = i < t.size && (t[i].kind == 'n' || t[i].kind == '(')
 
         private fun primary(): Value {
             if (p >= t.size) fail()

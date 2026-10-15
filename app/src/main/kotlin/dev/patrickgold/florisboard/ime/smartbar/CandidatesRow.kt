@@ -16,6 +16,7 @@
 
 package dev.patrickgold.florisboard.ime.smartbar
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -23,14 +24,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
@@ -114,7 +118,13 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                     )
                 }
                 CandidateItem(
-                    modifier = candidateModifier,
+                    modifier = if (candidate is MathSuggestionCandidate && candidates.size > 1 &&
+                        displayMode != CandidatesDisplayMode.CLASSIC
+                    ) {
+                        Modifier.fillMaxHeight().wrapContentWidth().widthIn(max = 240.dp)
+                    } else {
+                        candidateModifier
+                    },
                     candidate = candidate,
                     displayMode = displayMode,
                     onClick = {
@@ -153,6 +163,16 @@ private fun CandidateItem(
     longPressDelay: Long,
 ) = with(LocalDensity.current) {
     var isPressed by remember { mutableStateOf(false) }
+
+    // A calculator chip always shows its full expression. If it doesn't fit it scrolls sideways, resting on the end
+    // (the result) so the answer is visible and the start of the expression is a swipe away.
+    val isMath = candidate is MathSuggestionCandidate
+    val mathScroll = rememberScrollState()
+    if (isMath) {
+        LaunchedEffect(Unit) {
+            snapshotFlow { mathScroll.maxValue }.collect { mathScroll.scrollTo(it) }
+        }
+    }
 
     val elementName = if (candidate is ClipboardSuggestionCandidate) {
         FlorisImeUi.SmartbarCandidateClip
@@ -203,7 +223,8 @@ private fun CandidateItem(
             }
         }
         SnyggColumn(
-            modifier = if (displayMode == CandidatesDisplayMode.CLASSIC) Modifier.weight(1f) else Modifier,
+            modifier = (if (displayMode == CandidatesDisplayMode.CLASSIC) Modifier.weight(1f) else Modifier)
+                .conditional(isMath) { horizontalScroll(mathScroll) },
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

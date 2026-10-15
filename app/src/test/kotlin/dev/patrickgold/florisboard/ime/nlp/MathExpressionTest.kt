@@ -56,6 +56,19 @@ class MathExpressionTest {
             "50*10%" to "5",
             "100/8" to "12.5",
             "7−2" to "5",
+            "150+20%" to "180",
+            "150-20%" to "120",
+            "150%20" to "30",
+            "150 % 20" to "30",
+            "150*20%" to "30",
+            "150/20%" to "750",
+            "20%150" to "30",
+            "200%(5+5)" to "20",
+            "150%20+5" to "35",
+            "150%20%" to "30",
+            "50%3" to "1.5",
+            "1000-500" to "500",
+            "10-5" to "5",
         )
         for ((text, expected) in cases) {
             assertEquals(expected, result(text), "for `$text`")
@@ -98,10 +111,11 @@ class MathExpressionTest {
     fun `labels`() {
         assertEquals("23+60+17=100", assertNotNull(at("23+60+17")).label())
         assertEquals("23 + 60 = 83", assertNotNull(at("23 + 60")).label())
-        val long = assertNotNull(at("1+2+3+4+5+6+7+8+9+10+11+12+13"))
+        // Long expressions are never shortened; the chip scrolls instead.
+        val longText = "1+2+3+4+5+6+7+8+9+10+11+12+13"
+        val long = assertNotNull(at(longText))
         assertEquals("91", long.result)
-        assertEquals(true, long.label().startsWith("…"))
-        assertEquals(true, long.label().endsWith("=91"))
+        assertEquals("$longText=91", long.label())
     }
 
     @Test
@@ -109,7 +123,8 @@ class MathExpressionTest {
         val none = listOf(
             "", "42", "abc", "50%", "5+", "+", "5 +", "(5+3", "5+3)", "1/0", "0/0",
             "2024-10-15", "15/10/2026", "1-800-555-1234",
-            "23 60", "1.2.3+1", "max 5", "0x1F", "a5+5", "hello world", "(5)", "-5",
+            "23 60", "1.2.3+1", "555-1234", "(555) 123-4567", "555-123-4567", "98765-43210", "+91-98765-43210",
+            "011-23456789", "2024/10/15", "15-10-2026", "call 555-1234", "20%", "max 5", "0x1F", "a5+5", "hello world", "(5)", "-5",
         )
         for (text in none) {
             assertNull(at(text), "for `$text`")

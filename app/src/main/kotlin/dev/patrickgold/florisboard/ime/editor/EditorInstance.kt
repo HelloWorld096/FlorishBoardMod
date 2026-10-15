@@ -52,6 +52,7 @@ import org.florisboard.lib.android.showShortToastSync
 class EditorInstance(context: Context) : AbstractEditorInstance(context) {
     companion object {
         private const val SPACE = " "
+        private const val SPACE_REPLACING_PUNCTUATION = ".,!?;:)"
     }
 
     private val prefs by FlorisPreferenceStore
@@ -245,6 +246,18 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             ok = ic.setComposingRegion(range.start, range.end) &&
                 ic.setComposingText(candidate.text.toString(), 1)
             ic.finishComposingText()
+            if (ok) {
+                // Leave the cursor after the word and a space: add one at the end of the text, or step over the
+                // space that is already there. Punctuation right after the word is left alone.
+                val newEnd = range.start + candidate.text.length
+                val next = content.text.getOrNull(local.end)
+                if (next == null) {
+                    ic.commitText(SPACE, 1)
+                    suggestionSpaceActive = true
+                } else if (next.isWhitespace()) {
+                    ic.setSelection(newEnd + 1, newEnd + 1)
+                }
+            }
         } finally {
             ic.endBatchEdit()
         }
@@ -255,7 +268,10 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         if (char.isNotEmpty() && !(char[0].isLetter() || char[0] == '\'')) learnCurrentWord()
         val isInsertAutoSpaceBeforeChar = shouldInsertAutoSpaceBefore(char)
         val isInsertAutoSpaceAfterChar = shouldInsertAutoSpaceAfter(char)
-        val isDeletePreviousSpace = isInsertAutoSpaceAfterChar && autoSpace.isActive
+        val replaceSuggestionSpace = suggestionSpaceActive && char.length == 1 && char[0] in SPACE_REPLACING_PUNCTUATION &&
+            activeContent.textBeforeSelection.endsWith(SPACE)
+        suggestionSpaceActive = false
+        val isDeletePreviousSpace = (isInsertAutoSpaceAfterChar && autoSpace.isActive) || replaceSuggestionSpace
         if (isInsertAutoSpaceAfterChar) {
             autoSpace.setActive()
         } else {
@@ -306,7 +322,24 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
      *
      * @return True on success, false if an error occurred or the input connection is invalid.
      */
+    /** True right after a suggestion added its own trailing space, so closing punctuation can replace that space. */
+    private var suggestionSpaceActive = false
+
+    /** Commits [candidate] followed by a real space, so the next word can be typed immediately. */
     fun commitCompletion(candidate: SuggestionCandidate): Boolean {
+        val ok = commitCompletionNoSpace(candidate)
+        if (ok) addSuggestionSpace()
+        return ok
+    }
+
+    private fun addSuggestionSpace() {
+        // The real space replaces the phantom space, which would otherwise add a second one before the next character.
+        phantomSpace.setInactive()
+        autoSpace.setInactive()
+        if (super.commitText(SPACE)) suggestionSpaceActive = true
+    }
+
+    private fun commitCompletionNoSpace(candidate: SuggestionCandidate): Boolean {
         val text = candidate.text.toString()
         if (text.isEmpty() || activeInfo.isRawInputEditor) return false
         val content = activeContent

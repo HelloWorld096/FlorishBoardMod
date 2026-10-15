@@ -129,11 +129,8 @@ class LatinLanguageProvider(context: Context, private val userDictionary: UserDi
         val previousWords = previousWordsOf(before, UserDictionary.MAX_CONTEXT)
 
         val scored: List<ScoredWord> = when {
-            word.isEmpty() -> {
-                if (before.isEmpty() || before.last() == ' ' || before.last() == '\n') {
-                    eng.nextWords(previousWords, MAX_RESULTS)
-                } else emptyList()
-            }
+            // No history-based suggestions on an empty word: nothing is shown until a word is started.
+            word.isEmpty() -> emptyList()
             else -> {
                 val completions = eng.complete(word, previousWords, MAX_RESULTS)
                 val corrections = if (eng.isKnown(word)) emptyList() else {

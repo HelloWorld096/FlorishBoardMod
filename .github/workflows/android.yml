@@ -34,6 +34,16 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleMod --stacktrace --build-cache 2>&1 | tee build.log
         shell: bash
+      - name: Build timing summary
+        if: always()
+        shell: bash
+        run: |
+          fc=$(grep -c "FROM-CACHE" build.log || true); ut=$(grep -c "UP-TO-DATE" build.log || true)
+          ex=$(grep -c -E "^> Task .*[a-zA-Z]$" build.log || true)
+          sdk=$(grep -E "Preparing \"Install|Install .*(NDK|CMake|Platform|Build-Tools)" build.log | head -6 | tr '\n' ';')
+          slow=$(grep -E "^> Task :(app|lib)" build.log | grep -E "R8|minify|dex|Dex|lint|compile.*Kotlin|merge.*Resources|Native|externalNative" | head -12 | tr '\n' ';')
+          tot=$(grep -E "BUILD (SUCCESSFUL|FAILED) in" build.log | tail -1)
+          echo "::notice title=Gradle summary::tasks executed=$ex from-cache=$fc up-to-date=$ut | $tot | sdk-installs: $sdk | heavy tasks: $slow"
       - name: Surface errors as annotation
         if: failure()
         shell: bash

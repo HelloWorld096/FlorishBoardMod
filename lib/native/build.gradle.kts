@@ -49,6 +49,8 @@ android {
 
         ndk {
             //abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+            // Optional: -PflAbis=arm64-v8a limits the native (Rust) build to the given ABIs (used by CI for speed).
+            providers.gradleProperty("flAbis").orNull?.let { abiFilters += it.split(",").map(String::trim) }
         }
     }
 

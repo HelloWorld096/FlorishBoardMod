@@ -27,6 +27,7 @@ jobs:
           java-version: 17
           distribution: temurin
       - name: Restore Gradle cache
+        id: gradle_cache
         # One cache shared by every branch, stored as a release asset (GitHub's own cache can't be shared between
         # branches). Gradle's build cache is keyed by task inputs, so branches reuse each other's results safely.
         shell: bash
@@ -36,15 +37,28 @@ jobs:
           set +e
           if gh release download ci-cache -R "$GITHUB_REPOSITORY" -p gradle-home.tar.zst -O /tmp/gradle-home.tar.zst; then
             tar -I zstd -xf /tmp/gradle-home.tar.zst -C "$HOME"
+            echo "hit=true" >> "$GITHUB_OUTPUT"
             echo "::notice title=Gradle cache::restored $(du -h /tmp/gradle-home.tar.zst | cut -f1)"
             rm -f /tmp/gradle-home.tar.zst
           else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
             echo "::notice title=Gradle cache::none found, cold build"
           fi
+      - name: Cache Rust build (native library)
+        # The CMake tasks that run cargo are not Gradle-cacheable, so keep cargo's registry and target dir instead.
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            lib/native/src/main/rust/target
+          key: rust-${{ hashFiles('lib/native/src/main/rust/Cargo.lock', 'lib/native/src/main/rust/Cargo.toml', 'lib/native/src/main/rust/src/**', 'lib/native/src/main/rust/CMakeLists.txt') }}
+          restore-keys: rust-
       - name: Set up CMake and Ninja
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK
-        run: ./gradlew assembleMod --stacktrace --build-cache 2>&1 | tee build.log
+        # arm64-v8a only (one Rust build instead of four) and no release lint-vital: both are only needed for store builds.
+        run: ./gradlew assembleMod --stacktrace --build-cache -PflAbis=arm64-v8a -x lintVitalAnalyzeMod -x lintVitalReportMod -x lintVitalMod 2>&1 | tee build.log
         shell: bash
       - name: Verify APK signature
         shell: bash
@@ -66,7 +80,8 @@ jobs:
           tot=$(grep -E "BUILD (SUCCESSFUL|FAILED) in" build.log | tail -1)
           echo "::notice title=Gradle summary::tasks executed=$ex from-cache=$fc up-to-date=$ut | $tot | sdk-installs: $sdk | heavy tasks: $slow"
       - name: Save Gradle cache
-        if: always()
+        # Dependencies rarely change, so only (re)save on main or when no cache existed, not after every branch build.
+        if: always() && (steps.gradle_cache.outputs.hit != 'true' || github.ref == 'refs/heads/main')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

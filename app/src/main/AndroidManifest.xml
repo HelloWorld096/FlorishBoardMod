@@ -93,6 +93,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Snippet Editor Dialog Activity -->
+        <activity
+            android:name="dev.patrickgold.florisboard.ime.nlp.SnippetDialogActivity"
+            android:theme="@style/FlorisAppTheme.Transparent"
+            android:windowSoftInputMode="adjustResize|stateVisible"
+            android:exported="false" />
+
         <!-- Using an activity alias to disable/enable the app icon in the launcher -->
         <activity-alias
             android:name="dev.patrickgold.florisboard.SettingsLauncherAlias"

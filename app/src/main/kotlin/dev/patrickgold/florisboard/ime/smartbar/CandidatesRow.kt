@@ -91,7 +91,7 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
             .conditional(displayMode == CandidatesDisplayMode.DYNAMIC_SCROLLABLE && candidates.size > 1) {
                 florisHorizontalScroll(scrollbarHeight = CandidatesRowScrollbarHeight)
             },
-        horizontalArrangement = if (candidates.size > 1) {
+        horizontalArrangement = if (candidates.size > 1 || candidates.firstOrNull() is ColorSuggestionCandidate) {
             Arrangement.Start
         } else {
             Arrangement.Center
@@ -99,9 +99,15 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
     ) {
         if (candidates.isNotEmpty()) {
             val candidateModifier = if (candidates.size == 1) {
-                Modifier
-                    .fillMaxHeight()
-                    .weight(1f, fill = false)
+                if (candidates.first() is ColorSuggestionCandidate) {
+                    Modifier
+                        .fillMaxHeight()
+                        .wrapContentWidth()
+                } else {
+                    Modifier
+                        .fillMaxHeight()
+                        .weight(1f, fill = false)
+                }
             } else {
                 Modifier
                     .fillMaxHeight()
@@ -127,12 +133,17 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                     )
                 }
                 CandidateItem(
-                    modifier = if (candidate is MathSuggestionCandidate && candidates.size > 1 &&
-                        displayMode != CandidatesDisplayMode.CLASSIC
-                    ) {
-                        Modifier.fillMaxHeight().wrapContentWidth().widthIn(max = 240.dp)
-                    } else {
-                        candidateModifier
+                    modifier = when {
+                        candidate is ColorSuggestionCandidate -> {
+                            Modifier.fillMaxHeight().wrapContentWidth()
+                        }
+                        candidate is MathSuggestionCandidate && candidates.size > 1 &&
+                            displayMode != CandidatesDisplayMode.CLASSIC -> {
+                            Modifier.fillMaxHeight().wrapContentWidth().widthIn(max = 240.dp)
+                        }
+                        else -> {
+                            candidateModifier
+                        }
                     },
                     candidate = candidate,
                     displayMode = displayMode,

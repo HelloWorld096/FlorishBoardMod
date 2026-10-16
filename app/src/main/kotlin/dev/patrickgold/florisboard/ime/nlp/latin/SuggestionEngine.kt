@@ -146,7 +146,7 @@ class SuggestionEngine(private val base: Map<String, Int>, private val user: Use
         val matrix = Array(t.length + 1) { DoubleArray(t.length + maxCost.toInt() + 2) }
         var budget = MAX_CORRECTION_CANDIDATES
         fun consider(w: String, freq: Double, userCount: Int) {
-            if (w == t || user.isBlocked(w)) return
+            if (w == t || w.isEmpty() || user.isBlocked(w)) return
             val cost = distance(t, w, maxCost, hints, matrix)
             if (cost > maxCost) return
             val sim = 1.0 - cost / (maxCost + 0.5)

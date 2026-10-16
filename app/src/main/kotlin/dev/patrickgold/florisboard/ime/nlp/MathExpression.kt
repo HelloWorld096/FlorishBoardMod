@@ -123,9 +123,7 @@ object MathExpression {
             val parser = Parser(tokens)
             val value = parser.parse()
             if (parser.operators == 0) null else format(value)
-        } catch (_: ArithmeticException) {
-            null
-        } catch (_: IllegalArgumentException) {
+        } catch (_: Exception) {
             null
         }
     }

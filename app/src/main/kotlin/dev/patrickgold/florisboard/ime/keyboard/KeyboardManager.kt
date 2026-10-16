@@ -49,6 +49,7 @@ import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.PunctuationRule
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.latin.TouchModel
 import dev.patrickgold.florisboard.ime.onehanded.OneHandedMode
 import dev.patrickgold.florisboard.ime.popup.PopupMappingComponent
 import dev.patrickgold.florisboard.ime.text.composing.Composer
@@ -103,6 +104,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     val activeState = ObservableKeyboardState.new()
     var smartbarVisibleDynamicActionsCount by mutableIntStateOf(0)
     private var lastToastReference = WeakReference<Toast>(null)
+    private var lastSuggestionGate: KeyboardMode? = null
 
     private val activeEvaluatorGuard = Mutex(locked = false)
     private var activeEvaluatorVersion = AtomicInteger(0)
@@ -152,6 +154,11 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
             activeState.collectLatestIn(scope) {
                 updateActiveEvaluators()
+                val gate = activeState.keyboardMode
+                if (gate != lastSuggestionGate) {
+                    lastSuggestionGate = gate
+                    resetSuggestions(editorInstance.activeContent)
+                }
             }
             subtypeManager.subtypesFlow.collectLatestIn(scope) {
                 updateActiveEvaluators()
@@ -311,6 +318,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
     }
 
     fun commitCandidate(candidate: SuggestionCandidate) {
+        TouchModel.clear()
         scope.launch {
             candidate.sourceProvider?.notifySuggestionAccepted(subtypeManager.activeSubtype, candidate)
         }
@@ -334,10 +342,12 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
 
     /** Long press on a calculator suggestion: replaces the whole expression with just its result. */
     fun commitMathResultOnly(candidate: MathSuggestionCandidate) {
+        TouchModel.clear()
         editorInstance.commitMathReplacement(candidate, resultOnly = true)
     }
 
     fun commitGesture(word: String) {
+        TouchModel.clear()
         editorInstance.commitGesture(fixCase(word))
     }
 
@@ -363,6 +373,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Handles [KeyCode] arrow and move events, behaves differently depending on text selection.
      */
     fun handleArrow(code: Int, count: Int = 1) = editorInstance.apply {
+        TouchModel.clear()
         val isShiftPressed = activeState.isManualSelectionMode || inputEventDispatcher.isPressed(KeyCode.SHIFT) ||
             LatchedModifiers.shift
         val isCtrlLatched = LatchedModifiers.ctrl
@@ -496,35 +507,47 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * Handles a [KeyCode.DELETE] event.
      */
     private fun handleBackwardDelete(unit: OperationUnit) {
-        if (inputEventDispatcher.isPressed(KeyCode.SHIFT)) {
+        if (inputEventDispatcher.isPressed(KeyCode.SHIFT) || LatchedModifiers.shift) {
+            LatchedModifiers.consumeOneShot()
             return handleForwardDelete(unit)
         }
+        val isCtrl = LatchedModifiers.ctrl
+        LatchedModifiers.consumeOneShot()
         activeState.batchEdit {
             it.isManualSelectionMode = false
             it.isManualSelectionModeStart = false
             it.isManualSelectionModeEnd = false
         }
         revertPreviouslyAcceptedCandidate()
-        editorInstance.deleteBackwards(unit)
+        val effectiveUnit = if (isCtrl && unit == OperationUnit.CHARACTERS) OperationUnit.WORDS else unit
+        editorInstance.deleteBackwards(effectiveUnit)
     }
 
     /**
      * Handles a [KeyCode.FORWARD_DELETE] event.
      */
     private fun handleForwardDelete(unit: OperationUnit) {
+        val isCtrl = LatchedModifiers.ctrl
+        LatchedModifiers.consumeOneShot()
         activeState.batchEdit {
             it.isManualSelectionMode = false
             it.isManualSelectionModeStart = false
             it.isManualSelectionModeEnd = false
         }
         revertPreviouslyAcceptedCandidate()
-        editorInstance.deleteForwards(unit)
+        val effectiveUnit = if (isCtrl && unit == OperationUnit.CHARACTERS) OperationUnit.WORDS else unit
+        editorInstance.deleteForwards(effectiveUnit)
     }
 
     /**
      * Handles a [KeyCode.ENTER] event.
      */
     private fun handleEnter() {
+        if (LatchedModifiers.ctrl || LatchedModifiers.alt) {
+            sendLatchedKeyEvent(KeyEvent.KEYCODE_ENTER)
+            return
+        }
+        LatchedModifiers.consumeOneShot()
         editorInstance.learnCurrentWord()
         val info = editorInstance.activeInfo
         val isShiftPressed = inputEventDispatcher.isPressed(KeyCode.SHIFT)
@@ -632,6 +655,7 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
      * enabled by the user.
      */
     private fun handleSpace(data: KeyData) {
+        LatchedModifiers.consumeOneShot()
         val candidate = nlpManager.getAutoCommitCandidate()
         candidate?.let { commitCandidate(it) }
         if (prefs.keyboard.spaceBarSwitchesToCharacters.get()) {
@@ -828,7 +852,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             KeyCode.KANA_KATA -> handleKanaKata()
             KeyCode.KANA_HALF_KATA -> handleKanaHalfKata()
             KeyCode.LANGUAGE_SWITCH -> handleLanguageSwitch()
-            KeyCode.REDO -> editorInstance.performRedo()
+            KeyCode.REDO -> {
+                LatchedModifiers.consumeOneShot()
+                editorInstance.performRedo()
+            }
             KeyCode.SETTINGS -> FlorisImeService.launchSettings()
             KeyCode.SHIFT -> handleShiftUp(data)
             KeyCode.SPACE -> handleSpace(data)
@@ -849,7 +876,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
             }
             KeyCode.TOGGLE_INCOGNITO_MODE -> scope.launch { handleToggleIncognitoMode() }
             KeyCode.TOGGLE_AUTOCORRECT -> handleToggleAutocorrect()
-            KeyCode.UNDO -> editorInstance.performUndo()
+            KeyCode.UNDO -> {
+                LatchedModifiers.consumeOneShot()
+                editorInstance.performUndo()
+            }
             KeyCode.VIEW_CHARACTERS -> activeState.keyboardMode = KeyboardMode.CHARACTERS
             KeyCode.VIEW_NUMERIC -> activeState.keyboardMode = KeyboardMode.NUMERIC
             KeyCode.VIEW_NUMERIC_ADVANCED -> activeState.keyboardMode = KeyboardMode.NUMERIC_ADVANCED
@@ -871,11 +901,15 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                         KeyType.CHARACTER,
                         KeyType.NUMERIC -> {
                             val text = data.asString(isForDisplay = false)
+                            val sentAsCombo = trySendLatchedCharCombo(text)
+                            LatchedModifiers.consumeOneShot()
+                            if (sentAsCombo) return@batchEdit
                             editorInstance.commitText(text)
                         }
                         else -> when (data.code) {
                             KeyCode.PHONE_PAUSE,
                             KeyCode.PHONE_WAIT -> {
+                                LatchedModifiers.consumeOneShot()
                                 val text = data.asString(isForDisplay = false)
                                 editorInstance.commitText(text)
                             }
@@ -884,14 +918,20 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                     else -> when (data.type) {
                         KeyType.CHARACTER, KeyType.NUMERIC ->{
                             val text = data.asString(isForDisplay = false)
+                            val isShiftLatched = LatchedModifiers.shift
                             // Sends Ctrl/Alt+key if latched; Ctrl and Shift are used up by this key press either way.
                             val sentAsCombo = trySendLatchedCharCombo(text)
                             LatchedModifiers.consumeOneShot()
                             if (sentAsCombo) return@batchEdit
-                            if (!UCharacter.isUAlphabetic(UCharacter.codePointAt(text, 0))) {
+                            val textToCommit = if (isShiftLatched) {
+                                text.uppercase(subtypeManager.activeSubtype.primaryLocale)
+                            } else {
+                                text
+                            }
+                            if (!UCharacter.isUAlphabetic(UCharacter.codePointAt(textToCommit, 0))) {
                                 nlpManager.getAutoCommitCandidate()?.let { commitCandidate(it) }
                             }
-                            editorInstance.commitChar(text)
+                            editorInstance.commitChar(textToCommit)
                         }
                         else -> {
                             flogError(LogTopic.KEY_EVENTS) { "Received unknown key: $data" }

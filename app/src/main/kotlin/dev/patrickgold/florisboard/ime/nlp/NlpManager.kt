@@ -28,6 +28,7 @@ import dev.patrickgold.florisboard.ime.clipboard.provider.ItemType
 import dev.patrickgold.florisboard.ime.core.Subtype
 import dev.patrickgold.florisboard.ime.editor.EditorContent
 import dev.patrickgold.florisboard.ime.editor.EditorRange
+import dev.patrickgold.florisboard.ime.keyboard.KeyboardMode
 import dev.patrickgold.florisboard.ime.media.emoji.EmojiSuggestionProvider
 import dev.patrickgold.florisboard.ime.nlp.latin.UserDictionary
 import dev.patrickgold.florisboard.ime.text.key.KeyVariation
@@ -212,6 +213,23 @@ class NlpManager(context: Context) {
             || providerForcesSuggestionOn(subtypeManager.activeSubtype)
 
     /**
+     * Word suggestions only make sense while the user is typing text. On the numpad, phone pad and symbol
+     * screens they are suppressed. They stay available in the emoji / clipboard panels.
+     */
+    private fun wordSuggestionsAllowed(): Boolean {
+        val state = keyboardManager.activeState
+        return when (state.keyboardMode) {
+            KeyboardMode.NUMERIC,
+            KeyboardMode.NUMERIC_ADVANCED,
+            KeyboardMode.PHONE,
+            KeyboardMode.PHONE2,
+            KeyboardMode.SYMBOLS,
+            KeyboardMode.SYMBOLS2 -> false
+            else -> true
+        }
+    }
+
+    /**
      * The calculator suggestion for an arithmetic expression ending at the cursor, if any. Unlike word suggestions
      * this also works on the numpad and symbol screens, because that is where people type their numbers.
      */
@@ -231,6 +249,7 @@ class NlpManager(context: Context) {
 
     fun suggest(subtype: Subtype, content: EditorContent) {
         val reqTime = SystemClock.uptimeMillis()
+        val wordsAllowed = wordSuggestionsAllowed()
         scope.launch {
             val mathCandidate = mathCandidateFor(content)
             val emojiSuggestions = when {
@@ -246,6 +265,7 @@ class NlpManager(context: Context) {
                 else -> emptyList()
             }
             val suggestions = when {
+                !wordsAllowed -> emptyList()
                 emojiSuggestions.isNotEmpty() && prefs.emoji.suggestionType.get().prefix.isNotEmpty() -> {
                     emptyList()
                 }

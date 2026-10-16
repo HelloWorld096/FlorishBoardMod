@@ -40,6 +40,9 @@ class UserDictionary(context: Context) {
     private var saveJob: Job? = null
 
     private fun load(): Data = try {
+        if (!file.exists() && tmpFile.exists()) {
+            try { tmpFile.renameTo(file) } catch (_: Exception) {}
+        }
         if (file.exists()) {
             json.decodeFromString(Data.serializer(), file.readText()).also { d ->
                 for ((k, v) in d.bigrams) {
@@ -81,6 +84,7 @@ class UserDictionary(context: Context) {
             data.words.remove(w)
             data.ngrams.keys.removeAll { key -> key.split(' ').contains(w) }
             data.ngrams.values.forEach { it.remove(w) }
+            data.ngrams.entries.removeAll { it.value.isEmpty() }
             data.blocked.add(w)
             version++
         }
@@ -133,21 +137,36 @@ class UserDictionary(context: Context) {
     }
 
     private fun scheduleSave() {
-        saveJob?.cancel()
-        saveJob = scope.launch {
-            delay(3000)
-            val text = synchronized(lock) { json.encodeToString(Data.serializer(), data) }
-            // One writer at a time, and write-then-rename so a crash never leaves a truncated history behind.
-            synchronized(writeLock) {
-                try {
-                    tmpFile.writeText(text)
-                    if (!tmpFile.renameTo(file)) {
-                        file.delete()
-                        tmpFile.renameTo(file)
-                    }
-                } catch (_: Exception) {
-                    // Never log words; the next change schedules another attempt.
+        synchronized(lock) {
+            saveJob?.cancel()
+            saveJob = scope.launch {
+                delay(3000)
+                writeToDisk()
+            }
+        }
+    }
+
+    /** Flushes any pending debounced writes to disk immediately. */
+    fun flush() {
+        synchronized(lock) {
+            saveJob?.cancel()
+            saveJob = null
+        }
+        writeToDisk()
+    }
+
+    private fun writeToDisk() {
+        val text = synchronized(lock) { json.encodeToString(Data.serializer(), data) }
+        // One writer at a time, and write-then-rename so a crash never leaves a truncated history behind.
+        synchronized(writeLock) {
+            try {
+                tmpFile.writeText(text)
+                if (!tmpFile.renameTo(file)) {
+                    file.delete()
+                    tmpFile.renameTo(file)
                 }
+            } catch (_: Exception) {
+                // Never log words; the next change schedules another attempt.
             }
         }
     }

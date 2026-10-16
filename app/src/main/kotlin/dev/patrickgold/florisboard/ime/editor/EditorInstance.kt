@@ -44,6 +44,7 @@ import dev.patrickgold.florisboard.lib.ext.ExtensionComponentName
 import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate
 import dev.patrickgold.florisboard.ime.nlp.latin.LatinLanguageProvider
+import dev.patrickgold.florisboard.ime.nlp.latin.TouchModel
 import dev.patrickgold.florisboard.ime.nlp.latin.UserDictionary
 import dev.patrickgold.florisboard.nlpManager
 import dev.patrickgold.florisboard.subtypeManager
@@ -79,6 +80,7 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         activeState.isActionsEditorVisible = false
         LatchedModifiers.reset()
         ActionsOnlyRowState.reset()
+        TouchModel.clear()
         super.handleStartInputView(editorInfo, isRestart)
         val keyboardMode = when (editorInfo.inputAttributes.type) {
             InputAttributes.Type.NUMBER -> {
@@ -257,12 +259,20 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
                 if (next == null) {
                     ic.commitText(SPACE, 1)
                     suggestionSpaceActive = true
-                } else if (next.isWhitespace()) {
+                } else if (next == ' ') {
                     ic.setSelection(newEnd + 1, newEnd + 1)
+                    suggestionSpaceActive = false
+                } else {
+                    suggestionSpaceActive = false
                 }
             }
         } finally {
             ic.endBatchEdit()
+        }
+        if (ok) {
+            phantomSpace.setInactive()
+            autoSpace.setInactive()
+            TouchModel.clear()
         }
         return ok
     }
@@ -294,6 +304,7 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             phantomSpace.setInactive()
             autoSpace.setInactive()
             suggestionSpaceActive = false
+            TouchModel.clear()
         }
         return ok
     }
@@ -669,6 +680,7 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         super.reset()
         autoSpace.setInactive()
         phantomSpace.setInactive()
+        TouchModel.clear()
         massSelection.reset()
     }
 

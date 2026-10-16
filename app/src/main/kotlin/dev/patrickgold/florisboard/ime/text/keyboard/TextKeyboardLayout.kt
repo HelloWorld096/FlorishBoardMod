@@ -610,7 +610,7 @@ private class TextKeyboardLayoutController(
             letter != null -> TouchModel.onLetter(letter, runnerUp)
             code == KeyCode.DELETE -> TouchModel.onDelete()
             code == '\''.code -> TouchModel.onLetter('\'', null)
-            code == KeyCode.SPACE || code == KeyCode.ENTER || code > 32 -> TouchModel.clear()
+            code == KeyCode.SPACE || code == KeyCode.ENTER || code > 32 || code < 0 -> TouchModel.clear()
         }
     }
 
@@ -739,6 +739,13 @@ private class TextKeyboardLayoutController(
                             inputEventDispatcher.sendUp(activeKey.computedDataOnDown)
                         }
                     } else {
+                        val retChar = if (retData.code > 0) retData.code.toChar() else null
+                        if (retChar != null && (retChar.isLetter() || retChar == '\'')) {
+                            TouchModel.onDelete()
+                            TouchModel.onLetter(retChar, null)
+                        } else {
+                            TouchModel.clear()
+                        }
                         inputEventDispatcher.sendCancel(activeKey.computedDataOnDown)
                         inputEventDispatcher.sendDownUp(retData)
                     }

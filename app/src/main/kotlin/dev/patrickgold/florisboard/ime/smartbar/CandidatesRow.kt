@@ -33,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -128,12 +129,11 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                     candidate = candidate,
                     displayMode = displayMode,
                     onClick = {
-                        // Can't use candidate directly
-                        keyboardManager.commitCandidate(candidates[n])
+                        val item = candidates.getOrNull(n) ?: candidate
+                        keyboardManager.commitCandidate(item)
                     },
                     onLongPress = {
-                        // Can't use candidate directly
-                        val candidateItem = candidates[n]
+                        val candidateItem = candidates.getOrNull(n) ?: candidate
                         when {
                             // Long press on a calculator suggestion inserts only the result.
                             candidateItem is MathSuggestionCandidate -> {
@@ -163,6 +163,8 @@ private fun CandidateItem(
     longPressDelay: Long,
 ) = with(LocalDensity.current) {
     var isPressed by remember { mutableStateOf(false) }
+    val currentOnClick by rememberUpdatedState(onClick)
+    val currentOnLongPress by rememberUpdatedState(onLongPress)
 
     // A calculator chip always shows its full expression. If it doesn't fit it scrolls sideways, resting on the end
     // (the result) so the answer is visible and the start of the expression is a swipe away.
@@ -187,7 +189,7 @@ private fun CandidateItem(
         attributes = attributes,
         selector = selector,
         modifier = modifier
-            .pointerInput(Unit) {
+            .pointerInput(longPressDelay) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     isPressed = true
@@ -199,14 +201,14 @@ private fun CandidateItem(
                         }
                         upOrCancel?.let { if (it.pressed != it.previousPressed) it.consume() }
                     } catch (_: PointerEventTimeoutCancellationException) {
-                        if (onLongPress()) {
+                        if (currentOnLongPress()) {
                             upOrCancel = null
                             isPressed = false
                         }
                         waitForUpOrCancellation()?.let { if (it.pressed != it.previousPressed) it.consume() }
                     }
                     if (upOrCancel != null) {
-                        onClick()
+                        currentOnClick()
                     }
                     isPressed = false
                 }

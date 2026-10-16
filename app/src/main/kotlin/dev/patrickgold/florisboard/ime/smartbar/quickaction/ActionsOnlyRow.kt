@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.FlorisImeService
+import dev.patrickgold.florisboard.ime.input.InputShiftState
 import dev.patrickgold.florisboard.ime.text.key.KeyCode
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
@@ -113,7 +114,18 @@ fun ActionsOnlyRow(modifier: Modifier = Modifier) {
             // Page 2: ctrl, shift, esc, home, end, up, down
             listOf(
                 ActionsOnlyItem.Text("Ctrl", { LatchedModifiers.ctrl }) { LatchedModifiers.ctrl = !LatchedModifiers.ctrl },
-                ActionsOnlyItem.Text("Shift", { LatchedModifiers.shift }) { LatchedModifiers.shift = !LatchedModifiers.shift },
+                ActionsOnlyItem.Text("Shift", { LatchedModifiers.shift }) {
+                    LatchedModifiers.shift = !LatchedModifiers.shift
+                    if (LatchedModifiers.shift) {
+                        if (keyboardManager.activeState.inputShiftState == InputShiftState.UNSHIFTED) {
+                            keyboardManager.activeState.inputShiftState = InputShiftState.SHIFTED_MANUAL
+                        }
+                    } else {
+                        if (keyboardManager.activeState.inputShiftState == InputShiftState.SHIFTED_MANUAL) {
+                            keyboardManager.activeState.inputShiftState = InputShiftState.UNSHIFTED
+                        }
+                    }
+                },
                 ActionsOnlyItem.Text("Esc") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_ESCAPE) },
                 ActionsOnlyItem.Text("Home") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_MOVE_HOME) },
                 ActionsOnlyItem.Text("End") { keyboardManager.sendLatchedKeyEvent(KeyEvent.KEYCODE_MOVE_END) },

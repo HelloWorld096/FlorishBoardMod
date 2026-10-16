@@ -98,6 +98,7 @@ import dev.patrickgold.florisboard.ime.sheet.isBottomSheetShowing
 import dev.patrickgold.florisboard.ime.smartbar.ExtendedActionsPlacement
 import dev.patrickgold.florisboard.ime.smartbar.SmartbarLayout
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.ActionsOnlyRowState
+import dev.patrickgold.florisboard.ime.smartbar.quickaction.LatchedModifiers
 import dev.patrickgold.florisboard.ime.smartbar.quickaction.QuickActionsEditorPanel
 import dev.patrickgold.florisboard.ime.text.TextInputLayout
 import dev.patrickgold.florisboard.ime.theme.FlorisImeTheme
@@ -319,6 +320,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
+        nlpManager.userDictionary.flush()
         super.onDestroy()
         unregisterReceiver(wallpaperChangeReceiver)
         FlorisImeServiceReference = WeakReference(null)
@@ -377,6 +379,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     override fun onFinishInputView(finishingInput: Boolean) {
         flogInfo { "finishing=$finishingInput" }
         super.onFinishInputView(finishingInput)
+        nlpManager.userDictionary.flush()
         editorInstance.handleFinishInputView()
     }
 
@@ -410,6 +413,7 @@ class FlorisImeService : LifecycleInputMethodService() {
         }
         isWindowShown = false
         ActionsOnlyRowState.reset()
+        LatchedModifiers.reset()
         activeState.batchEdit {
             activeState.imeUiMode = ImeUiMode.TEXT
             activeState.isActionsOverflowVisible = false

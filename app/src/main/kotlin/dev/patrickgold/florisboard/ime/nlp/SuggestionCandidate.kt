@@ -214,3 +214,19 @@ data class MathSuggestionCandidate(
     override val icon: ImageVector? = null
     override val sourceProvider: SuggestionProvider? = null
 }
+
+/**
+ * A suggestion candidate displaying a color swatch preview chip.
+ */
+data class ColorSuggestionCandidate(
+    val colorInt: Int,
+    val originalText: String,
+    val replaceRange: dev.patrickgold.florisboard.ime.editor.EditorRange,
+    override val text: CharSequence = originalText,
+    override val secondaryText: CharSequence? = null,
+    override val confidence: Double = 1.0,
+    override val isEligibleForAutoCommit: Boolean = false,
+    override val isEligibleForUserRemoval: Boolean = false,
+    override val icon: ImageVector? = null,
+    override val sourceProvider: SuggestionProvider? = null,
+) : SuggestionCandidate

@@ -49,6 +49,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.wrapContentHeight
+import dev.patrickgold.florisboard.ime.nlp.SnippetManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -257,6 +258,7 @@ class FlorisImeService : LifecycleInputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
+        SnippetManager.init(this)
         FlorisImeServiceReference = WeakReference(this)
         WindowCompat.setDecorFitsSystemWindows(window.window!!, false)
         subtypeManager.activeSubtypeFlow.collectIn(lifecycleScope) { subtype ->

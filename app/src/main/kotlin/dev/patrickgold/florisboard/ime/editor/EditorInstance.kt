@@ -309,7 +309,51 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
         return ok
     }
 
+    private fun getWrapPair(char: String): Pair<String, String>? = when (char) {
+        "(", ")" -> "(" to ")"
+        "[", "]" -> "[" to "]"
+        "{", "}" -> "{" to "}"
+        "<", ">" -> "<" to ">"
+        "\"", "“", "”" -> "\"" to "\""
+        "'", "‘", "’" -> "'" to "'"
+        "`" -> "`" to "`"
+        "*" -> "*" to "*"
+        "_" -> "_" to "_"
+        "~" -> "~" to "~"
+        else -> null
+    }
+
+    fun wrapSelection(open: String, close: String): Boolean {
+        val ic = currentInputConnection() ?: return false
+        val sel = activeContent.selection
+        if (!sel.isSelectionMode) return false
+        val selectedText = activeContent.selectedText.ifBlank {
+            ic.getSelectedText(0)?.toString()
+        } ?: return false
+        val wrapped = "$open$selectedText$close"
+        var ok = false
+        ic.beginBatchEdit()
+        try {
+            ic.finishComposingText()
+            ok = ic.commitText(wrapped, 1)
+            if (ok) {
+                val start = sel.start + open.length
+                val end = start + selectedText.length
+                ic.setSelection(start, end)
+            }
+        } finally {
+            ic.endBatchEdit()
+        }
+        return ok
+    }
+
     override fun commitChar(char: String): Boolean {
+        if (activeContent.selection.isSelectionMode) {
+            val pair = getWrapPair(char)
+            if (pair != null) {
+                return wrapSelection(pair.first, pair.second)
+            }
+        }
         if (char.isNotEmpty() && !(char[0].isLetter() || char[0] == '\'')) learnCurrentWord()
         val isInsertAutoSpaceBeforeChar = shouldInsertAutoSpaceBefore(char)
         val isInsertAutoSpaceAfterChar = shouldInsertAutoSpaceAfter(char)
@@ -345,6 +389,12 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
      * @return True on success, false if an error occurred or the input connection is invalid.
      */
     override fun commitText(text: String): Boolean {
+        if (text.length == 1 && activeContent.selection.isSelectionMode) {
+            val pair = getWrapPair(text)
+            if (pair != null) {
+                return wrapSelection(pair.first, pair.second)
+            }
+        }
         if (text.isNotEmpty() && !(text[0].isLetter() || text[0] == '\'')) learnCurrentWord()
         val isPhantomSpaceActive = phantomSpace.determine(text)
         autoSpace.setInactive()

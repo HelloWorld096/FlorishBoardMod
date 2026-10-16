@@ -47,13 +47,20 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
+import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.outlined.Backspace
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.FilterListOff
 import androidx.compose.material.icons.filled.Image
@@ -69,6 +76,8 @@ import androidx.compose.material.icons.outlined.ContentPasteGo
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -82,6 +91,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -89,10 +99,18 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.patrickgold.florisboard.R
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.clipboardManager
+import dev.patrickgold.florisboard.editorInstance
+import dev.patrickgold.florisboard.ime.nlp.SnippetItem
+import dev.patrickgold.florisboard.ime.nlp.SnippetManager
+import dev.patrickgold.jetpref.material.ui.JetPrefTextField
 import dev.patrickgold.florisboard.ime.ImeUiMode
 import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardFileStorage
 import dev.patrickgold.florisboard.ime.clipboard.provider.ClipboardItem
@@ -134,6 +152,8 @@ import org.florisboard.lib.snygg.ui.SnyggIcon
 import org.florisboard.lib.snygg.ui.SnyggIconButton
 import org.florisboard.lib.snygg.ui.SnyggRow
 import org.florisboard.lib.snygg.ui.SnyggText
+import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
+import org.florisboard.lib.snygg.value.SnyggStaticColorValue
 
 private val ItemWidth = 200.dp
 private val DialogWidth = 240.dp
@@ -171,8 +191,13 @@ fun ClipboardInputLayout(
     val gridState = rememberLazyStaggeredGridState()
     var popupItem by remember(filteredHistory) { mutableStateOf<ClipboardItem?>(null) }
     var showClearAllHistory by remember { mutableStateOf(false) }
+    var isSnippetsTab by remember { mutableStateOf(false) }
+    var showSnippetDialog by remember { mutableStateOf(false) }
+    var dialogSnippetId by remember { mutableStateOf<String?>(null) }
+    var dialogShortcut by remember { mutableStateOf("") }
+    var dialogValue by remember { mutableStateOf("") }
 
-    fun isPopupSurfaceActive() = popupItem != null || showClearAllHistory
+    fun isPopupSurfaceActive() = popupItem != null || showClearAllHistory || showSnippetDialog
 
     LaunchedEffect(isFilterRowShown) {
         delay(AnimationDuration.toLong())
@@ -198,21 +223,75 @@ fun ClipboardInputLayout(
                 .aspectRatio(1f)
             SnyggIconButton(
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                onClick = { keyboardManager.activeState.imeUiMode = ImeUiMode.TEXT },
+                onClick = {
+                    if (isSnippetsTab) {
+                        isSnippetsTab = false
+                    } else {
+                        keyboardManager.activeState.imeUiMode = ImeUiMode.TEXT
+                    }
+                },
                 modifier = sizeModifier,
             ) {
                 SnyggIcon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 )
             }
-            // Typing shortcuts: space (wide), full stop, comma, forward slash, backspace, enter
+            // Typing shortcuts: space (adjusted width), snippets toggle button, full stop, comma, forward slash, backspace, enter
             KeyboardLikeButton(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier.weight(0.55f).fillMaxHeight(),
                 inputEventDispatcher = keyboardManager.inputEventDispatcher,
                 keyData = TextKeyData.SPACE,
                 elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
             ) {
                 SnyggIcon(imageVector = Icons.Default.SpaceBar)
+            }
+            val headerBtnStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardHeaderButton.elementName)
+            val fg = headerBtnStyle.foreground().let { if (it == Color.Unspecified) Color.White else it }
+            val borderCol = (headerBtnStyle.borderColor as? SnyggStaticColorValue)?.color
+            val solidBg = if (isSnippetsTab) {
+                fg
+            } else {
+                borderCol ?: fg.copy(alpha = 0.35f)
+            }
+            val fgColor = if (isSnippetsTab) {
+                (headerBtnStyle.background as? SnyggStaticColorValue)?.color ?: Color.Black
+            } else {
+                fg
+            }
+            Box(
+                modifier = Modifier
+                    .weight(0.45f)
+                    .fillMaxHeight()
+                    .padding(vertical = 4.dp, horizontal = 2.dp)
+                    .background(solidBg, CircleShape)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = ripple(),
+                    ) {
+                        isSnippetsTab = !isSnippetsTab
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.Assignment,
+                        contentDescription = "Snippets",
+                        modifier = Modifier.size(16.dp),
+                        tint = fgColor,
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "Snippets",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = fgColor,
+                        maxLines = 1,
+                    )
+                }
             }
             for (symbol in listOf('.', ',', '/')) {
                 KeyboardLikeButton(
@@ -533,6 +612,20 @@ fun ClipboardInputLayout(
                                 clipboardManager.pasteItem(popupItem!!)
                                 popupItem = null
                             }
+                            if (popupItem!!.type == ItemType.TEXT) {
+                                PopupAction(
+                                    icon = Icons.AutoMirrored.Outlined.Assignment,
+                                    text = "Save as Snippet",
+                                ) {
+                                    val text = popupItem!!.stringRepresentation()
+                                    val clean = text.trim().take(8).replace("\\s+".toRegex(), "_").lowercase().filter { it.isLetterOrDigit() || it == '_' }
+                                    dialogSnippetId = null
+                                    dialogShortcut = if (clean.isNotBlank()) "!$clean" else "!snip"
+                                    dialogValue = text
+                                    showSnippetDialog = true
+                                    popupItem = null
+                                }
+                            }
                         }
                     }
                 }
@@ -592,6 +685,105 @@ fun ClipboardInputLayout(
                                     text = stringRes(R.string.action__yes),
                                 )
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun SnippetsMainView() {
+        val snippets by SnippetManager.snippetsFlow.collectAsState()
+        val editorInstance by context.editorInstance()
+        val staggeredGridCells by prefs.clipboard.historyNumGridColumns()
+            .observeAsTransformingState { numGridColumns ->
+                if (numGridColumns == CLIPBOARD_HISTORY_NUM_GRID_COLUMNS_AUTO) {
+                    StaggeredGridCells.Adaptive(160.dp)
+                } else {
+                    StaggeredGridCells.Fixed(numGridColumns)
+                }
+            }
+
+        SnyggBox(
+            FlorisImeUi.ClipboardContent.elementName,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SnyggRow(
+                    elementName = FlorisImeUi.ClipboardSubheader.elementName,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ClipCategoryTitle(
+                        text = "SNIPPETS & EXPANSIONS",
+                        modifier = Modifier.weight(1f),
+                    )
+                    SnyggButton(
+                        elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
+                        onClick = {
+                            dialogSnippetId = null
+                            dialogShortcut = "!"
+                            dialogValue = ""
+                            showSnippetDialog = true
+                        },
+                        modifier = Modifier.height(32.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add",
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            SnyggText(text = "Add")
+                        }
+                    }
+                }
+
+                if (snippets.isEmpty()) {
+                    SnyggColumn(
+                        elementName = FlorisImeUi.ClipboardContent.elementName,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        SnyggText(text = "No snippets yet")
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SnyggText(
+                            text = "Tap '+ Add' or long-press a copied text clip to save it as a snippet.",
+                            modifier = Modifier.alpha(0.7f),
+                        )
+                    }
+                } else {
+                    LazyVerticalStaggeredGrid(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 4.dp),
+                        columns = staggeredGridCells,
+                    ) {
+                        items(snippets, key = { it.id }) { snippet ->
+                            SnippetCard(
+                                snippet = snippet,
+                                onPaste = {
+                                    val expanded = SnippetManager.expand(snippet.value)
+                                    editorInstance.commitText(expanded)
+                                },
+                                onEdit = {
+                                    dialogSnippetId = snippet.id
+                                    dialogShortcut = snippet.shortcut
+                                    dialogValue = snippet.value
+                                    showSnippetDialog = true
+                                },
+                                onDelete = {
+                                    SnippetManager.delete(snippet.id)
+                                },
+                            )
                         }
                     }
                 }
@@ -664,17 +856,40 @@ fun ClipboardInputLayout(
             .height(FlorisImeSizing.imeUiHeight()),
     ) {
         HeaderRow()
-        if (deviceLocked) {
-            HistoryLockedView()
-        } else {
-            if (historyEnabled) {
-                if (filteredHistory.all.isNotEmpty() || !activeFilterTypes.isEmpty()) {
-                    HistoryMainView()
-                } else {
-                    HistoryEmptyView()
-                }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            if (deviceLocked) {
+                HistoryLockedView()
             } else {
-                HistoryDisabledView()
+                if (isSnippetsTab) {
+                    SnippetsMainView()
+                } else {
+                    if (historyEnabled) {
+                        if (filteredHistory.all.isNotEmpty() || !activeFilterTypes.isEmpty()) {
+                            HistoryMainView()
+                        } else {
+                            HistoryEmptyView()
+                        }
+                    } else {
+                        HistoryDisabledView()
+                    }
+                }
+            }
+
+            if (showSnippetDialog) {
+                SnippetEditDialog(
+                    id = dialogSnippetId,
+                    initialShortcut = dialogShortcut,
+                    initialValue = dialogValue,
+                    onDismiss = { showSnippetDialog = false },
+                    onSave = { id, shortcut, value ->
+                        SnippetManager.addOrUpdate(id, shortcut, value)
+                        showSnippetDialog = false
+                    },
+                )
             }
         }
     }
@@ -755,5 +970,209 @@ private fun PopupAction(
             modifier = Modifier.weight(1f),
             text = text,
         )
+    }
+}
+
+@Composable
+private fun SnippetCard(
+    snippet: SnippetItem,
+    onPaste: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SnyggBox(
+        elementName = FlorisImeUi.ClipboardItem.elementName,
+        modifier = modifier.fillMaxWidth(),
+        clickAndSemanticsModifier = Modifier.combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = ripple(),
+            onClick = onPaste,
+            onLongClick = onEdit,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = snippet.shortcut,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(24.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = snippet.value,
+                fontSize = 12.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (snippet.value.contains("{date}") || snippet.value.contains("{time}") ||
+                snippet.value.contains("{datetime}") || snippet.value.contains("{uuid}")) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Dynamic: " + SnippetManager.expand(snippet.value),
+                    fontSize = 10.sp,
+                    fontStyle = FontStyle.Italic,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.alpha(0.7f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SnippetEditDialog(
+    id: String?,
+    initialShortcut: String,
+    initialValue: String,
+    onDismiss: () -> Unit,
+    onSave: (id: String?, shortcut: String, value: String) -> Unit,
+) {
+    var shortcut by remember(initialShortcut) { mutableStateOf(initialShortcut) }
+    var value by remember(initialValue) { mutableStateOf(initialValue) }
+    val context = LocalContext.current
+    val clipboardManager by context.clipboardManager()
+    val unfilteredHistory by clipboardManager.historyFlow.collectAsState()
+
+    SnyggRow(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures { onDismiss() }
+            },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        SnyggColumn(
+            elementName = FlorisImeUi.ClipboardClearAllDialog.elementName,
+            modifier = Modifier
+                .width(300.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures { /* Do nothing */ }
+                }
+                .florisVerticalScroll()
+                .padding(12.dp),
+        ) {
+            SnyggText(
+                elementName = FlorisImeUi.ClipboardClearAllDialogMessage.elementName,
+                text = if (id == null) "Add Snippet" else "Edit Snippet",
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+
+            Text(text = "Shortcut trigger (e.g. !mycode):", fontSize = 11.sp, modifier = Modifier.alpha(0.8f))
+            Spacer(modifier = Modifier.height(2.dp))
+            JetPrefTextField(
+                value = shortcut,
+                onValueChange = { shortcut = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(text = "Expansion text:", fontSize = 11.sp, modifier = Modifier.alpha(0.8f))
+            Spacer(modifier = Modifier.height(2.dp))
+            JetPrefTextField(
+                value = value,
+                onValueChange = { value = it },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(text = "Insert dynamic macro:", fontSize = 10.sp, modifier = Modifier.alpha(0.7f))
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .florisHorizontalScroll(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf("{date}", "{time}", "{datetime}", "{uuid}").forEach { token ->
+                    Box(
+                        modifier = Modifier
+                            .background(Color.Gray.copy(alpha = 0.2f), CircleShape)
+                            .clip(CircleShape)
+                            .clickable { value += token }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(text = token, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                val latestTextClip = unfilteredHistory.all.firstOrNull { it.type == ItemType.TEXT }?.stringRepresentation()
+                if (latestTextClip != null) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color.Gray.copy(alpha = 0.2f), CircleShape)
+                            .clip(CircleShape)
+                            .clickable { value += latestTextClip }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(text = "📋 Paste clip", fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SnyggRow(
+                elementName = FlorisImeUi.ClipboardClearAllDialogButtons.elementName,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Spacer(modifier = Modifier.weight(1f))
+                SnyggButton(
+                    elementName = FlorisImeUi.ClipboardClearAllDialogButton.elementName,
+                    attributes = mapOf("action" to "no"),
+                    onClick = onDismiss,
+                ) {
+                    SnyggText(text = stringRes(R.string.action__cancel))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                SnyggButton(
+                    elementName = FlorisImeUi.ClipboardClearAllDialogButton.elementName,
+                    attributes = mapOf("action" to "yes"),
+                    onClick = {
+                        val trimmedShortcut = shortcut.trim()
+                        if (trimmedShortcut.isNotBlank() && value.isNotBlank()) {
+                            onSave(id, trimmedShortcut, value)
+                        }
+                    },
+                ) {
+                    SnyggText(text = stringRes(R.string.action__save))
+                }
+            }
+        }
     }
 }

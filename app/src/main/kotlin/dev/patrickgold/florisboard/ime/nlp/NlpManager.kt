@@ -251,7 +251,8 @@ class NlpManager(context: Context) {
         val reqTime = SystemClock.uptimeMillis()
         val wordsAllowed = wordSuggestionsAllowed()
         scope.launch {
-            val mathCandidate = mathCandidateFor(content)
+            val utilityCandidate = SmartbarUtility.findCandidate(content)
+            val mathCandidate = if (utilityCandidate == null) mathCandidateFor(content) else null
             val emojiSuggestions = when {
                 prefs.emoji.suggestionEnabled.get() -> {
                     emojiSuggestionProvider.suggest(
@@ -282,6 +283,7 @@ class NlpManager(context: Context) {
             internalSuggestionsGuard.withLock {
                 if (internalSuggestions.first < reqTime) {
                     internalSuggestions = reqTime to buildList {
+                        if (utilityCandidate != null) add(utilityCandidate)
                         if (mathCandidate != null) add(mathCandidate)
                         addAll(emojiSuggestions)
                         addAll(suggestions)

@@ -324,13 +324,23 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         }
         if (candidate !is ClipboardSuggestionCandidate &&
             candidate !is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate &&
-            candidate !is MathSuggestionCandidate
+            candidate !is MathSuggestionCandidate &&
+            candidate !is dev.patrickgold.florisboard.ime.nlp.ColorSuggestionCandidate
         ) {
             editorInstance.learnAcceptedWord(candidate)
         }
         when (candidate) {
             // Tap: "23+60+17" -> "23+60+17=100"
             is MathSuggestionCandidate -> editorInstance.commitMathReplacement(candidate, resultOnly = false)
+            is dev.patrickgold.florisboard.ime.nlp.ColorSuggestionCandidate -> {
+                editorInstance.commitRangedReplacement(
+                    dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate(
+                        text = candidate.text,
+                        originalText = candidate.originalText,
+                        replaceRange = candidate.replaceRange,
+                    )
+                )
+            }
             is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate -> {
                 // Only learn once the editor has actually accepted the replacement.
                 if (editorInstance.commitRangedReplacement(candidate)) editorInstance.learnAcceptedWord(candidate)

@@ -52,6 +52,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
@@ -235,17 +237,20 @@ fun ClipboardInputLayout(
                 )
             }
             val headerBtnStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardHeaderButton.elementName)
-            val fg = headerBtnStyle.foreground().let { if (it == Color.Unspecified) Color.White else it }
-            val borderCol = (headerBtnStyle.borderColor as? SnyggStaticColorValue)?.color
+            val surfaceStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardItem.elementName)
+            val subheaderStyle = rememberSnyggThemeQuery(FlorisImeUi.SmartbarActionsEditorSubheader.elementName)
+            val surfaceBg = surfaceStyle.background().let { if (it.isSpecified) it else Color(0xFF333333) }
+            val secondaryColor = subheaderStyle.foreground().let { if (it.isSpecified) it else Color(0xFF03DAC6) }
+            val headerFg = headerBtnStyle.foreground().let { if (it.isSpecified) it else Color.White }
             val solidBg = if (isSnippetsTab) {
-                fg
+                surfaceBg
             } else {
-                borderCol ?: fg.copy(alpha = 0.35f)
+                Color.Transparent
             }
             val fgColor = if (isSnippetsTab) {
-                (headerBtnStyle.background as? SnyggStaticColorValue)?.color ?: Color.Black
+                secondaryColor
             } else {
-                fg
+                headerFg
             }
             Box(
                 modifier = sizeModifier
@@ -703,40 +708,50 @@ fun ClipboardInputLayout(
                     .fillMaxSize()
                     .alpha(historyAlpha),
             ) {
-                SnyggRow(
-                    elementName = FlorisImeUi.ClipboardSubheader.elementName,
+                val primaryBtnStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardHistoryDisabledButton.elementName)
+                val primaryColor = primaryBtnStyle.background().let { if (it.isSpecified) it else Color(0xFF4CAF50) }
+                val onPrimaryColor = primaryBtnStyle.foreground().let { if (it.isSpecified) it else Color.White }
+
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ClipCategoryTitle(
+                    SnyggText(
+                        elementName = FlorisImeUi.ClipboardSubheader.elementName,
                         text = "SNIPPETS",
+                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                     )
-                    SnyggButton(
-                        elementName = FlorisImeUi.ClipboardHeaderButton.elementName,
-                        onClick = {
-                            context.startActivity(
-                                SnippetDialogActivity.newIntent(context = context)
-                            )
-                        },
+                    Row(
                         modifier = Modifier
-                            .height(FlorisImeSizing.smartbarHeight * 0.75f)
-                            .padding(vertical = 2.dp),
+                            .background(primaryColor, RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = ripple(),
+                            ) {
+                                context.startActivity(
+                                    SnippetDialogActivity.newIntent(context = context)
+                                )
+                            }
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add",
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            SnyggText(text = "Add")
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add",
+                            modifier = Modifier.size(16.dp),
+                            tint = onPrimaryColor,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Add",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = onPrimaryColor,
+                        )
                     }
                 }
 

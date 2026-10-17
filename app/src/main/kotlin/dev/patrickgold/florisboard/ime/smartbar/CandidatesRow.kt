@@ -58,6 +58,7 @@ import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.SelectionCountCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
 import org.florisboard.lib.android.showShortToastSync
+import dev.patrickgold.florisboard.clipboardManager
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.nlpManager
@@ -80,6 +81,7 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
     val prefs by FlorisPreferenceStore
     val context = LocalContext.current
     val keyboardManager by context.keyboardManager()
+    val clipboardManager by context.clipboardManager()
     val nlpManager by context.nlpManager()
     val subtypeManager by context.subtypeManager()
 
@@ -162,7 +164,7 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                                 true
                             }
                             candidateItem is SelectionCountCandidate -> {
-                                keyboardManager.clipboardManager.addNewPlaintext(candidateItem.text.toString())
+                                clipboardManager.addNewPlaintext(candidateItem.text.toString())
                                 context.showShortToastSync("Copied count summary")
                                 true
                             }

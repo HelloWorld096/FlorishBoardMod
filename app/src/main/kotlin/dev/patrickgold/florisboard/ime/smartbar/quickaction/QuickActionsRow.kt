@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
+import dev.patrickgold.florisboard.clipboardManager
 import dev.patrickgold.florisboard.editorInstance
 import dev.patrickgold.florisboard.ime.smartbar.SmartbarLayout
 import dev.patrickgold.florisboard.ime.text.keyboard.TextKeyData
@@ -151,7 +152,7 @@ private fun SelectionCountChip(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val keyboardManager by context.keyboardManager()
+    val clipboardManager by context.clipboardManager()
     val wordsLabel = if (words == 1) "1 word" else "$words words"
     val charsLabel = if (chars == 1) "1 char" else "$chars chars"
     val linesLabel = if (lines == 1) "1 line" else "$lines lines"
@@ -179,7 +180,7 @@ private fun SelectionCountChip(
                         }
                         upOrCancel?.let { if (it.pressed != it.previousPressed) it.consume() }
                     } catch (_: PointerEventTimeoutCancellationException) {
-                        keyboardManager.clipboardManager.addNewPlaintext("$wordsLabel • $charsLabel")
+                        clipboardManager.addNewPlaintext("$wordsLabel • $charsLabel")
                         context.showShortToastSync("Copied count summary")
                         upOrCancel = null
                         isPressed = false

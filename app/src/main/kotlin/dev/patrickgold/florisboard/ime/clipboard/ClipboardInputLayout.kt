@@ -782,8 +782,7 @@ fun ClipboardInputLayout(
                             SnippetCard(
                                 snippet = snippet,
                                 onClick = {
-                                    val expanded = SnippetManager.expand(snippet.value)
-                                    editorInstance.commitText(expanded)
+                                    editorInstance.commitSnippet(snippet.value)
                                 },
                                 onLongClick = {
                                     popupSnippet = snippet
@@ -808,8 +807,7 @@ fun ClipboardInputLayout(
                         SnippetCard(
                             snippet = popupSnippet!!,
                             onClick = {
-                                val expanded = SnippetManager.expand(popupSnippet!!.value)
-                                editorInstance.commitText(expanded)
+                                editorInstance.commitSnippet(popupSnippet!!.value)
                                 popupSnippet = null
                             },
                             onLongClick = { },
@@ -824,8 +822,7 @@ fun ClipboardInputLayout(
                                 icon = Icons.Outlined.ContentPasteGo,
                                 text = "Paste",
                             ) {
-                                val expanded = SnippetManager.expand(popupSnippet!!.value)
-                                editorInstance.commitText(expanded)
+                                editorInstance.commitSnippet(popupSnippet!!.value)
                                 popupSnippet = null
                             }
                             PopupAction(
@@ -1061,7 +1058,7 @@ private fun SnippetCard(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (snippet.value.contains("{date}") || snippet.value.contains("{time}") ||
+            if (snippet.value.contains("{cursor}") || snippet.value.contains("{date}") || snippet.value.contains("{time}") ||
                 snippet.value.contains("{datetime}") || snippet.value.contains("{uuid}")) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(

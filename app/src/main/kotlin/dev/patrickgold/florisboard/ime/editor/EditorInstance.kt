@@ -252,18 +252,24 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
                 ic.setComposingText(candidate.text.toString(), 1)
             ic.finishComposingText()
             if (ok) {
-                // Leave the cursor after the word and a space: add one at the end of the text, or step over the
-                // space that is already there. Punctuation right after the word is left alone.
-                val newEnd = range.start + candidate.text.length
-                val next = content.text.getOrNull(local.end)
-                if (next == null) {
-                    ic.commitText(SPACE, 1)
-                    suggestionSpaceActive = true
-                } else if (next == ' ') {
-                    ic.setSelection(newEnd + 1, newEnd + 1)
+                if (candidate.cursorOffset != null) {
+                    val targetCursor = range.start + candidate.cursorOffset
+                    ic.setSelection(targetCursor, targetCursor)
                     suggestionSpaceActive = false
                 } else {
-                    suggestionSpaceActive = false
+                    // Leave the cursor after the word and a space: add one at the end of the text, or step over the
+                    // space that is already there. Punctuation right after the word is left alone.
+                    val newEnd = range.start + candidate.text.length
+                    val next = content.text.getOrNull(local.end)
+                    if (next == null) {
+                        ic.commitText(SPACE, 1)
+                        suggestionSpaceActive = true
+                    } else if (next == ' ') {
+                        ic.setSelection(newEnd + 1, newEnd + 1)
+                        suggestionSpaceActive = false
+                    } else {
+                        suggestionSpaceActive = false
+                    }
                 }
             }
         } finally {
@@ -273,6 +279,19 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
             phantomSpace.setInactive()
             autoSpace.setInactive()
             TouchModel.clear()
+        }
+        return ok
+    }
+
+    /** Commits an expanded snippet and repositions cursor if {cursor} was defined. */
+    fun commitSnippet(snippetRaw: String): Boolean {
+        val (text, cursorOffset) = dev.patrickgold.florisboard.ime.nlp.SnippetManager.expandWithCursor(snippetRaw)
+        val cursorBefore = activeContent.selection.start
+        val isPhantom = phantomSpace.determine(text)
+        val ok = commitText(text)
+        if (ok && cursorOffset != null) {
+            val target = cursorBefore + cursorOffset + (if (isPhantom) 1 else 0)
+            setSelection(target, target)
         }
         return ok
     }

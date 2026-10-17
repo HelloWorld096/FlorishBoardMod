@@ -107,6 +107,18 @@ object GeneratorUtility {
     private val DATE_REGEX = Regex("""!date$""", RegexOption.IGNORE_CASE)
     private val TIME_REGEX = Regex("""!time$""", RegexOption.IGNORE_CASE)
     private val DATETIME_REGEX = Regex("""!datetime$""", RegexOption.IGNORE_CASE)
+    private val LOREM_REGEX = Regex("""!lorem(?:\s+(\d{1,2}))?$""", RegexOption.IGNORE_CASE)
+
+    private val LOREM_SENTENCES = listOf(
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+        "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+        "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+        "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.",
+        "Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit.",
+        "Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit.",
+        "Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam.",
+    )
 
     private val SECURE_RANDOM = SecureRandom()
     // Avoid ambiguous characters: l, 1, I, 0, O
@@ -144,8 +156,16 @@ object GeneratorUtility {
         }
 
         DATETIME_REGEX.find(candidate)?.let { m ->
-            val dt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            val dt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"))
             return GeneratorMatch(windowStart + m.range.first, cursor, m.value, dt, "Date & Time: $dt")
+        }
+
+        LOREM_REGEX.find(candidate)?.let { m ->
+            val requestedCount = m.groupValues.getOrNull(1)?.toIntOrNull() ?: 1
+            val count = requestedCount.coerceIn(1, 8)
+            val loremText = LOREM_SENTENCES.take(count).joinToString(" ")
+            val label = if (count == 1) "Lorem Ipsum (1 sentence)" else "Lorem Ipsum ($count sentences)"
+            return GeneratorMatch(windowStart + m.range.first, cursor, m.value, loremText, label)
         }
 
         return null

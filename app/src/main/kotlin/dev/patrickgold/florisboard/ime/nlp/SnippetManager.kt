@@ -22,6 +22,11 @@ data class SnippetItem(
     val value: String,
 )
 
+data class ExpandedSnippet(
+    val text: String,
+    val cursorOffset: Int?,
+)
+
 object SnippetManager {
     private val lock = Any()
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
@@ -114,6 +119,10 @@ object SnippetManager {
     }
 
     fun expand(raw: String): String {
+        return expandWithCursor(raw).text
+    }
+
+    fun expandWithCursor(raw: String): ExpandedSnippet {
         var res = raw
         if (res.contains("{date}")) {
             res = res.replace("{date}", LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")))
@@ -122,12 +131,19 @@ object SnippetManager {
             res = res.replace("{time}", LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))
         }
         if (res.contains("{datetime}")) {
-            res = res.replace("{datetime}", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))
+            res = res.replace("{datetime}", LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm")))
         }
         if (res.contains("{uuid}")) {
             res = res.replace("{uuid}", UUID.randomUUID().toString())
         }
-        return res
+        val cursorIdx = res.indexOf("{cursor}")
+        val finalText = if (cursorIdx >= 0) {
+            res.replace("{cursor}", "")
+        } else {
+            res
+        }
+        val cursorOffset = if (cursorIdx >= 0) cursorIdx else null
+        return ExpandedSnippet(finalText, cursorOffset)
     }
 
     fun findCandidate(text: String, cursor: Int, offset: Int): RangedWordCandidate? {
@@ -138,12 +154,13 @@ object SnippetManager {
         for (snippet in _snippetsFlow.value) {
             if (candidate.endsWith(snippet.shortcut, ignoreCase = true)) {
                 val start = cursor - snippet.shortcut.length
-                val expanded = expand(snippet.value)
+                val (expandedText, cursorOffset) = expandWithCursor(snippet.value)
                 return RangedWordCandidate(
-                    text = expanded,
+                    text = expandedText,
                     originalText = snippet.shortcut,
                     replaceRange = EditorRange(start + offset, cursor + offset),
                     secondaryText = snippet.shortcut,
+                    cursorOffset = cursorOffset,
                 )
             }
         }

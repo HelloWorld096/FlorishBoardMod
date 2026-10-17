@@ -351,7 +351,7 @@ fun SnippetDialogContent(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    listOf("{date}", "{time}", "{datetime}", "{uuid}").forEach { token ->
+                    listOf("{cursor}", "{date}", "{time}", "{datetime}", "{uuid}").forEach { token ->
                         Box(
                             modifier = Modifier
                                 .background(fieldBg, RoundedCornerShape(8.dp))

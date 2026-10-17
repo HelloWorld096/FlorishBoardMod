@@ -185,6 +185,7 @@ data class RangedWordCandidate(
     override val isEligibleForAutoCommit: Boolean = false,
     override val isEligibleForUserRemoval: Boolean = true,
     override val sourceProvider: SuggestionProvider? = null,
+    val cursorOffset: Int? = null,
 ) : SuggestionCandidate {
     override val icon: ImageVector? = null
 }

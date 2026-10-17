@@ -322,7 +322,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
-        nlpManager.userDictionary.flush()
+        nlpManager.userDictionary.flush(blocking = true)
         super.onDestroy()
         unregisterReceiver(wallpaperChangeReceiver)
         FlorisImeServiceReference = WeakReference(null)
@@ -381,7 +381,7 @@ class FlorisImeService : LifecycleInputMethodService() {
     override fun onFinishInputView(finishingInput: Boolean) {
         flogInfo { "finishing=$finishingInput" }
         super.onFinishInputView(finishingInput)
-        nlpManager.userDictionary.flush()
+        nlpManager.userDictionary.flush(blocking = false)
         editorInstance.handleFinishInputView()
     }
 

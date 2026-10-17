@@ -2,9 +2,13 @@ package dev.patrickgold.florisboard.ime.nlp
 
 import android.content.Context
 import dev.patrickgold.florisboard.ime.editor.EditorRange
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -29,9 +33,11 @@ data class ExpandedSnippet(
 
 object SnippetManager {
     private val lock = Any()
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
     private var file: File? = null
     private var tmpFile: File? = null
+    private var hasPendingChanges = false
 
     private val _snippetsFlow = MutableStateFlow<List<SnippetItem>>(emptyList())
     val snippetsFlow: StateFlow<List<SnippetItem>> = _snippetsFlow.asStateFlow()
@@ -39,7 +45,7 @@ object SnippetManager {
     fun init(context: Context) {
         synchronized(lock) {
             if (file != null) return
-            val dir = context.filesDir
+            val dir = context.applicationContext.filesDir
             file = File(dir, "snippets.json")
             tmpFile = File(dir, "snippets.json.tmp")
             load()
@@ -54,16 +60,33 @@ object SnippetManager {
             tf != null && tf.exists() -> tf
             else -> null
         }
-        if (target != null) {
+        val diskList = if (target != null) {
             try {
-                val list = json.decodeFromString<List<SnippetItem>>(target.readText())
-                if (list.isNotEmpty()) {
-                    _snippetsFlow.value = list
-                    return
-                }
+                json.decodeFromString<List<SnippetItem>>(target.readText())
             } catch (_: Exception) {
+                emptyList()
             }
+        } else emptyList()
+
+        if (hasPendingChanges) {
+            val memory = _snippetsFlow.value
+            val merged = memory.toMutableList()
+            for (item in diskList) {
+                if (merged.none { it.id == item.id || it.shortcut.equals(item.shortcut, ignoreCase = true) }) {
+                    merged.add(item)
+                }
+            }
+            _snippetsFlow.value = merged
+            hasPendingChanges = false
+            save()
+            return
         }
+
+        if (diskList.isNotEmpty()) {
+            _snippetsFlow.value = diskList
+            return
+        }
+
         // Default snippets
         val defaults = listOf(
             SnippetItem(shortcut = "!email", value = "user@example.com"),
@@ -76,17 +99,28 @@ object SnippetManager {
         save()
     }
 
-    private fun save() = synchronized(lock) {
-        val f = file ?: return
-        val tf = tmpFile ?: return
-        try {
-            val text = json.encodeToString(_snippetsFlow.value)
-            tf.writeText(text)
-            if (!tf.renameTo(f)) {
-                f.delete()
-                tf.renameTo(f)
+    private fun save() {
+        scope.launch {
+            val f: File
+            val tf: File
+            val text: String
+            synchronized(lock) {
+                f = file ?: return@launch
+                tf = tmpFile ?: return@launch
+                text = try {
+                    json.encodeToString(_snippetsFlow.value)
+                } catch (_: Exception) {
+                    return@launch
+                }
             }
-        } catch (_: Exception) {
+            try {
+                tf.writeText(text)
+                if (!tf.renameTo(f)) {
+                    f.delete()
+                    tf.renameTo(f)
+                }
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -100,22 +134,34 @@ object SnippetManager {
         } else {
             SnippetItem(shortcut = s, value = value)
         }
-        val current = _snippetsFlow.value.toMutableList()
-        val idx = current.indexOfFirst { it.id == item.id }
-        if (idx >= 0) {
-            current[idx] = item
-        } else {
-            current.add(0, item)
+        synchronized(lock) {
+            val current = _snippetsFlow.value.toMutableList()
+            val idx = current.indexOfFirst { it.id == item.id }
+            if (idx >= 0) {
+                current[idx] = item
+            } else {
+                current.add(0, item)
+            }
+            _snippetsFlow.value = current
+            if (file == null) {
+                hasPendingChanges = true
+            } else {
+                save()
+            }
         }
-        _snippetsFlow.value = current
-        save()
         return item
     }
 
     fun delete(id: String) {
-        val current = _snippetsFlow.value.filterNot { it.id == id }
-        _snippetsFlow.value = current
-        save()
+        synchronized(lock) {
+            val current = _snippetsFlow.value.filterNot { it.id == id }
+            _snippetsFlow.value = current
+            if (file == null) {
+                hasPendingChanges = true
+            } else {
+                save()
+            }
+        }
     }
 
     fun expand(raw: String): String {

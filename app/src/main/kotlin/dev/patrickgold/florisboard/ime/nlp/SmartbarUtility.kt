@@ -211,27 +211,34 @@ object DateTimeUtility {
             val base = m.groupValues[1].lowercase()
             val sign = m.groupValues[2]
             val amount = m.groupValues[3].toLongOrNull() ?: return null
+            if (amount < 0 || amount > 100_000) return null
             val unit = m.groupValues[4].lowercase()
             val factor = if (sign == "-") -amount else amount
 
-            val resultStr = if (base == "now" && unit in listOf("hours", "h", "hr", "hrs", "minutes", "min", "mins", "m")) {
-                val now = LocalDateTime.now()
-                val target = when (unit) {
-                    "hours", "h", "hr", "hrs" -> now.plusHours(factor)
-                    else -> now.plusMinutes(factor)
+            val resultStr = try {
+                if (base == "now" && unit in listOf("hours", "h", "hr", "hrs", "minutes", "min", "mins", "m")) {
+                    val now = LocalDateTime.now()
+                    val target = when (unit) {
+                        "hours", "h", "hr", "hrs" -> now.plusHours(factor)
+                        else -> now.plusMinutes(factor)
+                    }
+                    target.format(DateTimeFormatter.ofPattern("HH:mm"))
+                } else {
+                    if (base == "today" && unit in listOf("hours", "h", "hr", "hrs", "minutes", "min", "mins", "m")) {
+                        return null
+                    }
+                    val today = LocalDate.now()
+                    val target = when (unit) {
+                        "days", "day", "d" -> today.plusDays(factor)
+                        "weeks", "week", "w" -> today.plusWeeks(factor)
+                        "months", "month", "mo" -> today.plusMonths(factor)
+                        "years", "year", "y" -> today.plusYears(factor)
+                        else -> return null
+                    }
+                    target.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
                 }
-                target.format(DateTimeFormatter.ofPattern("HH:mm"))
-            } else {
-                val today = LocalDate.now()
-                val target = when (unit) {
-                    "days", "day", "d" -> today.plusDays(factor)
-                    "weeks", "week", "w" -> today.plusWeeks(factor)
-                    "months", "month", "mo" -> today.plusMonths(factor)
-                    "years", "year", "y" -> today.plusYears(factor)
-                    "hours", "h", "hr", "hrs" -> today.plusDays(factor / 24)
-                    else -> today.plusDays(factor)
-                }
-                target.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
+            } catch (_: Exception) {
+                return null
             }
 
             val start = windowStart + m.range.first
@@ -241,32 +248,36 @@ object DateTimeUtility {
         }
 
         DAYS_UNTIL_REGEX.find(candidate)?.let { m ->
-            val targetStr = m.groupValues[1].lowercase()
-            val today = LocalDate.now()
-            val targetDate: LocalDate = when {
-                targetStr.startsWith("20") -> {
-                    try { LocalDate.parse(targetStr) } catch (_: Exception) { return null }
+            return try {
+                val targetStr = m.groupValues[1].lowercase()
+                val today = LocalDate.now()
+                val targetDate: LocalDate = when {
+                    targetStr.startsWith("20") -> {
+                        try { LocalDate.parse(targetStr) } catch (_: Exception) { return null }
+                    }
+                    targetStr == "christmas" -> {
+                        var x = LocalDate.of(today.year, 12, 25)
+                        if (x.isBefore(today)) x = x.plusYears(1)
+                        x
+                    }
+                    targetStr.contains("new") -> {
+                        LocalDate.of(today.year + 1, 1, 1)
+                    }
+                    targetStr == "halloween" -> {
+                        var x = LocalDate.of(today.year, 10, 31)
+                        if (x.isBefore(today)) x = x.plusYears(1)
+                        x
+                    }
+                    else -> return null
                 }
-                targetStr == "christmas" -> {
-                    var x = LocalDate.of(today.year, 12, 25)
-                    if (x.isBefore(today)) x = x.plusYears(1)
-                    x
-                }
-                targetStr.contains("new") -> {
-                    LocalDate.of(today.year + 1, 1, 1)
-                }
-                targetStr == "halloween" -> {
-                    var x = LocalDate.of(today.year, 10, 31)
-                    if (x.isBefore(today)) x = x.plusYears(1)
-                    x
-                }
-                else -> return null
+                val days = ChronoUnit.DAYS.between(today, targetDate)
+                val result = "$days days"
+                val start = windowStart + m.range.first
+                val expr = m.value.replace(Regex("""\s*=\s*$"""), "").trim()
+                MathMatch(start, cursor, expr, result)
+            } catch (_: Exception) {
+                null
             }
-            val days = ChronoUnit.DAYS.between(today, targetDate)
-            val result = "$days days"
-            val start = windowStart + m.range.first
-            val expr = m.value.replace(Regex("""\s*=\s*$"""), "").trim()
-            return MathMatch(start, cursor, expr, result)
         }
 
         TIMESTAMP_REGEX.find(candidate)?.let { m ->
@@ -317,14 +328,38 @@ object UnitConverter {
     )
 
     // Digital Storage (base: byte)
-    private val STORAGE = mapOf(
-        "b" to 0.125, "bit" to 0.125, "bits" to 0.125,
-        "byte" to 1.0, "bytes" to 1.0, "B" to 1.0,
-        "kb" to 1024.0, "kib" to 1024.0, "KB" to 1024.0,
-        "mb" to 1024.0 * 1024.0, "mib" to 1024.0 * 1024.0, "MB" to 1024.0 * 1024.0,
-        "gb" to 1024.0 * 1024.0 * 1024.0, "gib" to 1024.0 * 1024.0 * 1024.0, "GB" to 1024.0 * 1024.0 * 1024.0,
-        "tb" to 1024.0 * 1024.0 * 1024.0 * 1024.0, "tib" to 1024.0 * 1024.0 * 1024.0 * 1024.0, "TB" to 1024.0 * 1024.0 * 1024.0 * 1024.0,
+    // Note: Digital storage units are case-sensitive to distinguish bits ('b') from bytes ('B').
+    private val STORAGE_CASE_SENSITIVE = mapOf(
+        "b" to 0.125,
+        "kb" to 128.0, "kbit" to 128.0,
+        "mb" to 131072.0, "mbit" to 131072.0, "Mb" to 131072.0,
+        "gb" to 134217728.0, "gbit" to 134217728.0, "Gb" to 134217728.0,
+        "tb" to 137438953472.0, "tbit" to 137438953472.0, "Tb" to 137438953472.0,
+        "B" to 1.0,
+        "KB" to 1024.0, "kB" to 1024.0, "KiB" to 1024.0, "kib" to 1024.0,
+        "MB" to 1024.0 * 1024.0, "MiB" to 1024.0 * 1024.0, "mib" to 1024.0 * 1024.0,
+        "GB" to 1024.0 * 1024.0 * 1024.0, "GiB" to 1024.0 * 1024.0 * 1024.0, "gib" to 1024.0 * 1024.0 * 1024.0,
+        "TB" to 1024.0 * 1024.0 * 1024.0 * 1024.0, "TiB" to 1024.0 * 1024.0 * 1024.0 * 1024.0, "tib" to 1024.0 * 1024.0 * 1024.0 * 1024.0,
     )
+
+    private val STORAGE_CASE_INSENSITIVE = mapOf(
+        "bit" to 0.125, "bits" to 0.125,
+        "byte" to 1.0, "bytes" to 1.0,
+        "kilobit" to 128.0, "kilobits" to 128.0,
+        "megabit" to 131072.0, "megabits" to 131072.0,
+        "gigabit" to 134217728.0, "gigabits" to 134217728.0,
+        "terabit" to 137438953472.0, "terabits" to 137438953472.0,
+        "kilobyte" to 1024.0, "kilobytes" to 1024.0,
+        "megabyte" to 1024.0 * 1024.0, "megabytes" to 1024.0 * 1024.0,
+        "gigabyte" to 1024.0 * 1024.0 * 1024.0, "gigabytes" to 1024.0 * 1024.0 * 1024.0,
+        "terabyte" to 1024.0 * 1024.0 * 1024.0 * 1024.0, "terabytes" to 1024.0 * 1024.0 * 1024.0 * 1024.0,
+    )
+
+    private fun getStorageFactor(unit: String): Double? {
+        val trimmed = unit.trim()
+        STORAGE_CASE_SENSITIVE[trimmed]?.let { return it }
+        return STORAGE_CASE_INSENSITIVE[trimmed.lowercase()]
+    }
 
     // Time (base: second)
     private val TIME = mapOf(
@@ -395,18 +430,28 @@ object UnitConverter {
 
         val match = CONVERT_REGEX.find(candidate) ?: return null
         val valStr = match.groupValues[1]
-        val fromUnit = match.groupValues[2].lowercase().trim()
-        val toUnit = match.groupValues[3].lowercase().trim()
+        val fromRaw = match.groupValues[2].trim()
+        val toRaw = match.groupValues[3].trim()
         val value = valStr.toDoubleOrNull() ?: return null
 
-        val resultValue = convert(value, fromUnit, toUnit) ?: return null
-        val formattedResult = formatResult(resultValue, toUnit)
+        val resultValue = convert(value, fromRaw, toRaw) ?: return null
+        val formattedResult = formatResult(resultValue, toRaw)
         val start = windowStart + match.range.first
         val expr = match.value.replace(Regex("""\s*=\s*$"""), "").trim()
         return MathMatch(start, cursor, expr, formattedResult)
     }
 
-    private fun convert(value: Double, from: String, to: String): Double? {
+    private fun convert(value: Double, fromRaw: String, toRaw: String): Double? {
+        val fromStorage = getStorageFactor(fromRaw)
+        val toStorage = getStorageFactor(toRaw)
+        if (fromStorage != null && toStorage != null) {
+            val base = value * fromStorage
+            return base / toStorage
+        }
+
+        val from = fromRaw.lowercase()
+        val to = toRaw.lowercase()
+
         if (from in TEMPERATURE_UNITS && to in TEMPERATURE_UNITS) {
             val fromNorm = normTemp(from)
             val toNorm = normTemp(to)
@@ -424,7 +469,7 @@ object UnitConverter {
             }
         }
 
-        val tables = listOf(LENGTH, MASS, STORAGE, TIME, VOLUME, SPEED, AREA, PRESSURE, ENERGY)
+        val tables = listOf(LENGTH, MASS, TIME, VOLUME, SPEED, AREA, PRESSURE, ENERGY)
         for (table in tables) {
             val fromFactor = table[from]
             val toFactor = table[to]
@@ -446,9 +491,9 @@ object UnitConverter {
     private fun formatResult(value: Double, toUnit: String): String {
         val rounded = BigDecimal(value).setScale(4, RoundingMode.HALF_UP).stripTrailingZeros()
         val str = rounded.toPlainString()
-        val dispUnit = when (toUnit) {
-            "c" -> "°C"
-            "f" -> "°F"
+        val dispUnit = when (toUnit.lowercase()) {
+            "c", "°c" -> "°C"
+            "f", "°f" -> "°F"
             "k" -> "K"
             else -> toUnit
         }
@@ -461,16 +506,40 @@ object UnitConverter {
  */
 object SmartbarUtility {
     fun findCandidate(content: EditorContent): SuggestionCandidate? {
+        return try {
+            findCandidateInternal(content)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun findCandidateInternal(content: EditorContent): SuggestionCandidate? {
         val sel = content.localSelection
         if (sel.isNotValid) return null
 
         if (sel.isSelectionMode) {
             val selected = content.selectedText
             if (selected.isNotEmpty()) {
-                val words = if (selected.isBlank()) 0 else selected.trim().split(Regex("""\s+""")).count { it.isNotEmpty() }
+                var words = 0
+                var lines = 1
+                var charsNoSpaces = 0
+                var inWord = false
                 val chars = selected.length
-                val charsNoSpaces = selected.count { !it.isWhitespace() }
-                val lines = selected.lines().size
+                for (i in 0 until chars) {
+                    val ch = selected[i]
+                    if (ch == '\n') {
+                        lines++
+                    }
+                    if (ch.isWhitespace()) {
+                        inWord = false
+                    } else {
+                        charsNoSpaces++
+                        if (!inWord) {
+                            words++
+                            inWord = true
+                        }
+                    }
+                }
                 return SelectionCountCandidate(
                     words = words,
                     chars = chars,

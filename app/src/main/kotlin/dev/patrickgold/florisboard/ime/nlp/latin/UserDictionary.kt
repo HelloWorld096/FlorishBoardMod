@@ -33,29 +33,55 @@ class UserDictionary(context: Context) {
     /** Bumped on every change so caches built from the words can tell when they are stale. */
     @Volatile var version: Int = 0
         private set
+    @Volatile private var isDirty: Boolean = false
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val json = Json { ignoreUnknownKeys = true }
     private val lock = Any()
     private var data = load()
     private var saveJob: Job? = null
 
-    private fun load(): Data = try {
-        if (!file.exists() && tmpFile.exists()) {
-            try { tmpFile.renameTo(file) } catch (_: Exception) {}
+    private fun parseData(f: File): Data {
+        val d = json.decodeFromString(Data.serializer(), f.readText())
+        for ((k, v) in d.bigrams) {
+            val target = d.ngrams.getOrPut(k) { mutableMapOf() }
+            for ((w, c) in v) target[w] = (target[w] ?: 0) + c
         }
+        d.bigrams.clear()
+        return d
+    }
+
+    private fun load(): Data {
         if (file.exists()) {
-            json.decodeFromString(Data.serializer(), file.readText()).also { d ->
-                for ((k, v) in d.bigrams) {
-                    val target = d.ngrams.getOrPut(k) { mutableMapOf() }
-                    for ((w, c) in v) target[w] = (target[w] ?: 0) + c
+            try {
+                return parseData(file)
+            } catch (_: Exception) {
+                // Main file is corrupt. Attempt recovery from tmpFile if valid.
+                if (tmpFile.exists()) {
+                    try {
+                        val recovered = parseData(tmpFile)
+                        try {
+                            file.renameTo(File(file.parentFile, "user_dictionary.json.corrupt"))
+                            tmpFile.renameTo(file)
+                        } catch (_: Exception) {}
+                        return recovered
+                    } catch (_: Exception) {
+                        try { tmpFile.delete() } catch (_: Exception) {}
+                    }
                 }
-                d.bigrams.clear()
+                try { file.renameTo(File(file.parentFile, "user_dictionary.json.corrupt")) } catch (_: Exception) {}
+                return Data()
             }
-        } else Data()
-    } catch (_: Exception) {
-        // Keep the unreadable file around instead of letting the next save silently overwrite the history.
-        try { file.renameTo(File(file.parentFile, "user_dictionary.json.corrupt")) } catch (_: Exception) {}
-        Data()
+        } else if (tmpFile.exists()) {
+            try {
+                val recovered = parseData(tmpFile)
+                try { tmpFile.renameTo(file) } catch (_: Exception) {}
+                return recovered
+            } catch (_: Exception) {
+                try { tmpFile.delete() } catch (_: Exception) {}
+                return Data()
+            }
+        }
+        return Data()
     }
 
     /** [previous] holds the words before [word], oldest first. The last [MAX_CONTEXT] of them are used as context. */
@@ -74,6 +100,7 @@ class UserDictionary(context: Context) {
             }
             if (data.words.size > MAX_WORDS || data.ngrams.size > MAX_CONTEXTS) prune()
             version++
+            isDirty = true
         }
         scheduleSave()
     }
@@ -87,12 +114,13 @@ class UserDictionary(context: Context) {
             data.ngrams.entries.removeAll { it.value.isEmpty() }
             data.blocked.add(w)
             version++
+            isDirty = true
         }
         scheduleSave()
     }
 
     fun clear() {
-        synchronized(lock) { data = Data(); version++ }
+        synchronized(lock) { data = Data(); version++; isDirty = true }
         scheduleSave()
     }
 
@@ -147,16 +175,28 @@ class UserDictionary(context: Context) {
     }
 
     /** Flushes any pending debounced writes to disk immediately. */
-    fun flush() {
+    fun flush(blocking: Boolean = false) {
         synchronized(lock) {
+            if (!isDirty) return
             saveJob?.cancel()
             saveJob = null
         }
-        writeToDisk()
+        if (blocking) {
+            writeToDisk()
+        } else {
+            scope.launch {
+                writeToDisk()
+            }
+        }
     }
 
     private fun writeToDisk() {
-        val text = synchronized(lock) { json.encodeToString(Data.serializer(), data) }
+        val (text, needsWrite) = synchronized(lock) {
+            if (!isDirty) return@synchronized ("" to false)
+            isDirty = false
+            json.encodeToString(Data.serializer(), data) to true
+        }
+        if (!needsWrite) return
         // One writer at a time, and write-then-rename so a crash never leaves a truncated history behind.
         synchronized(writeLock) {
             try {
@@ -167,6 +207,7 @@ class UserDictionary(context: Context) {
                 }
             } catch (_: Exception) {
                 // Never log words; the next change schedules another attempt.
+                synchronized(lock) { isDirty = true }
             }
         }
     }

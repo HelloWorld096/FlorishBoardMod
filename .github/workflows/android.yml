@@ -58,7 +58,7 @@ jobs:
         uses: lukka/get-cmake@v4.0.2
       - name: Build APK
         # arm64-v8a only (one Rust build instead of four) and no release lint-vital: both are only needed for store builds.
-        run: ./gradlew assembleMod --stacktrace --build-cache -PflAbis=arm64-v8a -x lintVitalAnalyzeMod -x lintVitalReportMod -x lintVitalMod 2>&1 | tee build.log
+        run: ./gradlew testModUnitTest assembleMod --stacktrace --build-cache -PflAbis=arm64-v8a -x lintVitalAnalyzeMod -x lintVitalReportMod -x lintVitalMod 2>&1 | tee build.log
         shell: bash
       - name: Verify APK signature
         shell: bash

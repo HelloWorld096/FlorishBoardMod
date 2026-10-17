@@ -287,8 +287,12 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
     fun commitSnippet(snippetRaw: String): Boolean {
         val (text, cursorOffset) = dev.patrickgold.florisboard.ime.nlp.SnippetManager.expandWithCursor(snippetRaw)
         val cursorBefore = activeContent.selection.start
+        if (text.isNotEmpty() && !(text[0].isLetter() || text[0] == '\'')) learnCurrentWord()
         val isPhantom = phantomSpace.determine(text)
-        val ok = commitText(text)
+        val textToCommit = if (isPhantom) "$SPACE$text" else text
+        autoSpace.setInactive()
+        phantomSpace.setInactive()
+        val ok = super.commitText(textToCommit)
         if (ok && cursorOffset != null) {
             val target = cursorBefore + cursorOffset + (if (isPhantom) 1 else 0)
             setSelection(target, target)
@@ -329,16 +333,13 @@ class EditorInstance(context: Context) : AbstractEditorInstance(context) {
     }
 
     private fun getWrapPair(char: String): Pair<String, String>? = when (char) {
-        "(", ")" -> "(" to ")"
-        "[", "]" -> "[" to "]"
-        "{", "}" -> "{" to "}"
-        "<", ">" -> "<" to ">"
-        "\"", "“", "”" -> "\"" to "\""
-        "'", "‘", "’" -> "'" to "'"
+        "(" -> "(" to ")"
+        "[" -> "[" to "]"
+        "{" -> "{" to "}"
+        "<" -> "<" to ">"
+        "\"", "“" -> "\"" to "\""
+        "'", "‘" -> "'" to "'"
         "`" -> "`" to "`"
-        "*" -> "*" to "*"
-        "_" -> "_" to "_"
-        "~" -> "~" to "~"
         else -> null
     }
 

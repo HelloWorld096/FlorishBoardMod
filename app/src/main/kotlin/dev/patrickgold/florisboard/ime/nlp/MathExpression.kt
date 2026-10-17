@@ -124,6 +124,8 @@ object MathExpression {
             val value = parser.parse()
             if (parser.operators == 0) null else format(value)
         } catch (_: Exception) {
+            // Intentionally swallow expression evaluation / arithmetic / parsing errors (e.g., division by zero,
+            // overflow, invalid operator positions) so invalid or partial expressions never crash suggestion lookup.
             null
         }
     }

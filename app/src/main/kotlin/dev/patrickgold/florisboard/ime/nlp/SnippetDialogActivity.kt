@@ -88,6 +88,7 @@ class SnippetDialogActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SnippetManager.init(applicationContext)
 
         val snippetId = intent.getStringExtra(EXTRA_ID)
         val initialShortcut = intent.getStringExtra(EXTRA_SHORTCUT) ?: "!"

@@ -60,6 +60,7 @@ import dev.patrickgold.florisboard.ime.theme.FlorisImeTheme
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import kotlinx.coroutines.delay
 import org.florisboard.lib.snygg.ui.rememberSnyggThemeQuery
+import org.florisboard.lib.snygg.value.SnyggStaticColorValue
 
 class SnippetDialogActivity : ComponentActivity() {
     companion object {
@@ -74,7 +75,10 @@ class SnippetDialogActivity : ComponentActivity() {
             value: String? = null,
         ): Intent {
             return Intent(context, SnippetDialogActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                    Intent.FLAG_ACTIVITY_NO_HISTORY
                 putExtra(EXTRA_ID, id)
                 putExtra(EXTRA_SHORTCUT, shortcut)
                 putExtra(EXTRA_VALUE, value)
@@ -104,6 +108,16 @@ class SnippetDialogActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun finish() {
+        finishAndRemoveTask()
+        super.finish()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        finishAndRemoveTask()
+    }
 }
 
 @Composable
@@ -118,8 +132,8 @@ private fun KeyboardThemedInputField(
     focusRequester: FocusRequester? = null,
     backgroundColor: Color,
     textColor: Color,
-    accentColor: Color,
-    borderColor: Color,
+    outlineColor: Color,
+    cursorColor: Color,
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -129,7 +143,7 @@ private fun KeyboardThemedInputField(
             text = label,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
-            color = if (isFocused) accentColor else textColor.copy(alpha = 0.7f),
+            color = textColor.copy(alpha = if (isFocused) 0.85f else 0.65f),
             modifier = Modifier.padding(bottom = 4.dp),
         )
         Box(
@@ -137,8 +151,8 @@ private fun KeyboardThemedInputField(
                 .fillMaxWidth()
                 .background(backgroundColor, RoundedCornerShape(8.dp))
                 .border(
-                    width = if (isFocused) 1.5.dp else 1.dp,
-                    color = if (isFocused) accentColor else borderColor,
+                    width = 1.dp,
+                    color = outlineColor,
                     shape = RoundedCornerShape(8.dp),
                 )
                 .padding(horizontal = 12.dp, vertical = if (singleLine) 10.dp else 8.dp),
@@ -154,7 +168,7 @@ private fun KeyboardThemedInputField(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Normal,
                 ),
-                cursorBrush = SolidColor(accentColor),
+                cursorBrush = SolidColor(cursorColor),
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -191,6 +205,8 @@ fun SnippetDialogContent(
     val unfilteredHistory by clipboardManager.historyFlow.collectAsState()
 
     // Query active keyboard theme styles
+    val dialogStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardClearAllDialog.elementName)
+    val popupStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardItemPopup.elementName)
     val windowStyle = rememberSnyggThemeQuery(FlorisImeUi.Window.elementName)
     val itemStyle = rememberSnyggThemeQuery(FlorisImeUi.ClipboardItem.elementName)
     val subheaderStyle = rememberSnyggThemeQuery(FlorisImeUi.SmartbarActionsEditorSubheader.elementName)
@@ -203,11 +219,20 @@ fun SnippetDialogContent(
     val primaryColor = primaryBtnStyle.background().let { if (it.isSpecified) it else Color(0xFF4CAF50) }
     val onPrimaryColor = primaryBtnStyle.foreground().let { if (it.isSpecified) it else Color.White }
 
+    // Consistent subtle modal outline color derived from theme
+    val modalOutlineColor = (dialogStyle.borderColor as? SnyggStaticColorValue)?.color
+        ?: (popupStyle.borderColor as? SnyggStaticColorValue)?.color
+        ?: (itemStyle.borderColor as? SnyggStaticColorValue)?.color
+        ?: (windowStyle.borderColor as? SnyggStaticColorValue)?.color
+        ?: onSurfaceColor.copy(alpha = 0.12f)
+
     val fieldBg = if (backgroundColor.isSpecified && backgroundColor != Color.Transparent && backgroundColor != surfaceColor) {
         backgroundColor
     } else {
         surfaceColor.copy(alpha = 0.5f)
     }
+
+    val cursorColor = if (secondaryColor.isSpecified) secondaryColor else onSurfaceColor
 
     LaunchedEffect(Unit) {
         delay(150)
@@ -238,7 +263,7 @@ fun SnippetDialogContent(
                 )
                 .shadow(elevation = 8.dp, shape = RoundedCornerShape(16.dp))
                 .background(surfaceColor, RoundedCornerShape(16.dp))
-                .border(1.dp, onSurfaceColor.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                .border(1.dp, modalOutlineColor, RoundedCornerShape(16.dp))
                 .padding(20.dp),
         ) {
             Column(
@@ -278,7 +303,7 @@ fun SnippetDialogContent(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Shortcut Input Field
+                // Shortcut Input Field (uses modal outline color for darker, comfortable contrast)
                 KeyboardThemedInputField(
                     value = shortcut,
                     onValueChange = { shortcut = it },
@@ -288,13 +313,13 @@ fun SnippetDialogContent(
                     focusRequester = focusRequester,
                     backgroundColor = fieldBg,
                     textColor = onSurfaceColor,
-                    accentColor = secondaryColor,
-                    borderColor = onSurfaceColor.copy(alpha = 0.18f),
+                    outlineColor = modalOutlineColor,
+                    cursorColor = cursorColor,
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Expansion Value Input Field
+                // Expansion Value Input Field (uses modal outline color for darker, comfortable contrast)
                 KeyboardThemedInputField(
                     value = value,
                     onValueChange = { value = it },
@@ -305,8 +330,8 @@ fun SnippetDialogContent(
                     maxLines = 6,
                     backgroundColor = fieldBg,
                     textColor = onSurfaceColor,
-                    accentColor = secondaryColor,
-                    borderColor = onSurfaceColor.copy(alpha = 0.18f),
+                    outlineColor = modalOutlineColor,
+                    cursorColor = cursorColor,
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -330,7 +355,7 @@ fun SnippetDialogContent(
                         Box(
                             modifier = Modifier
                                 .background(fieldBg, RoundedCornerShape(8.dp))
-                                .border(1.dp, onSurfaceColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                .border(1.dp, modalOutlineColor, RoundedCornerShape(8.dp))
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -352,7 +377,7 @@ fun SnippetDialogContent(
                         Box(
                             modifier = Modifier
                                 .background(secondaryColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                .border(1.dp, secondaryColor.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .border(1.dp, modalOutlineColor, RoundedCornerShape(8.dp))
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
@@ -380,7 +405,7 @@ fun SnippetDialogContent(
                 ) {
                     Box(
                         modifier = Modifier
-                            .border(1.dp, onSurfaceColor.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+                            .border(1.dp, modalOutlineColor, RoundedCornerShape(20.dp))
                             .clip(RoundedCornerShape(20.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },

@@ -98,6 +98,10 @@
             android:name="dev.patrickgold.florisboard.ime.nlp.SnippetDialogActivity"
             android:theme="@style/FlorisAppTheme.Transparent"
             android:windowSoftInputMode="adjustResize|stateVisible"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:autoRemoveFromRecents="true"
+            android:taskAffinity=""
             android:exported="false" />
 
         <!-- Using an activity alias to disable/enable the app icon in the launcher -->

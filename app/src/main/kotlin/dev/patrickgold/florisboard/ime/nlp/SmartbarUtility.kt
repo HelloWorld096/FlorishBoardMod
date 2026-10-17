@@ -462,7 +462,26 @@ object UnitConverter {
 object SmartbarUtility {
     fun findCandidate(content: EditorContent): SuggestionCandidate? {
         val sel = content.localSelection
-        if (sel.isNotValid || !sel.isCursorMode) return null
+        if (sel.isNotValid) return null
+
+        if (sel.isSelectionMode) {
+            val selected = content.selectedText
+            if (selected.isNotEmpty()) {
+                val words = if (selected.isBlank()) 0 else selected.trim().split(Regex("""\s+""")).count { it.isNotEmpty() }
+                val chars = selected.length
+                val charsNoSpaces = selected.count { !it.isWhitespace() }
+                val lines = selected.lines().size
+                return SelectionCountCandidate(
+                    words = words,
+                    chars = chars,
+                    lines = lines,
+                    charsNoSpaces = charsNoSpaces,
+                )
+            }
+            return null
+        }
+
+        if (!sel.isCursorMode) return null
         val text = content.text
         val cursor = sel.start.coerceIn(0, text.length)
         val offset = content.offset

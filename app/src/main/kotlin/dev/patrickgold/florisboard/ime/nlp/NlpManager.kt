@@ -254,6 +254,7 @@ class NlpManager(context: Context) {
             val utilityCandidate = SmartbarUtility.findCandidate(content)
             val mathCandidate = if (utilityCandidate == null) mathCandidateFor(content) else null
             val emojiSuggestions = when {
+                utilityCandidate is SelectionCountCandidate -> emptyList()
                 prefs.emoji.suggestionEnabled.get() -> {
                     emojiSuggestionProvider.suggest(
                         subtype = subtype,
@@ -266,7 +267,7 @@ class NlpManager(context: Context) {
                 else -> emptyList()
             }
             val suggestions = when {
-                !wordsAllowed -> emptyList()
+                !wordsAllowed || utilityCandidate is SelectionCountCandidate -> emptyList()
                 emojiSuggestions.isNotEmpty() && prefs.emoji.suggestionType.get().prefix.isNotEmpty() -> {
                     emptyList()
                 }
@@ -336,18 +337,27 @@ class NlpManager(context: Context) {
 
     private fun assembleCandidates() {
         runBlocking {
+            val isSelection = editorInstance.activeContent.selection.isSelectionMode
             val candidates = when {
                 isSuggestionOn() -> {
-                    clipboardSuggestionProvider.suggest(
-                        subtype = Subtype.DEFAULT,
-                        content = editorInstance.activeContent,
-                        maxCandidateCount = 8,
-                        allowPossiblyOffensive = !prefs.suggestion.blockPossiblyOffensive.get(),
-                        isPrivateSession = keyboardManager.activeState.isIncognitoMode,
-                    ).ifEmpty {
+                    if (isSelection) {
                         buildList {
                             internalSuggestionsGuard.withLock {
                                 addAll(internalSuggestions.second)
+                            }
+                        }
+                    } else {
+                        clipboardSuggestionProvider.suggest(
+                            subtype = Subtype.DEFAULT,
+                            content = editorInstance.activeContent,
+                            maxCandidateCount = 8,
+                            allowPossiblyOffensive = !prefs.suggestion.blockPossiblyOffensive.get(),
+                            isPrivateSession = keyboardManager.activeState.isIncognitoMode,
+                        ).ifEmpty {
+                            buildList {
+                                internalSuggestionsGuard.withLock {
+                                    addAll(internalSuggestions.second)
+                                }
                             }
                         }
                     }

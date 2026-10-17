@@ -231,3 +231,25 @@ data class ColorSuggestionCandidate(
     override val icon: ImageVector? = null,
     override val sourceProvider: SuggestionProvider? = null,
 ) : SuggestionCandidate
+
+/**
+ * A suggestion candidate displaying word and character counts for the currently selected text.
+ */
+data class SelectionCountCandidate(
+    val words: Int,
+    val chars: Int,
+    val lines: Int,
+    val charsNoSpaces: Int,
+) : SuggestionCandidate {
+    val wordsLabel: String get() = if (words == 1) "1 word" else "$words words"
+    val charsLabel: String get() = if (chars == 1) "1 char" else "$chars chars"
+    val linesLabel: String get() = if (lines == 1) "1 line" else "$lines lines"
+
+    override val text: CharSequence = "$wordsLabel • $charsLabel"
+    override val secondaryText: CharSequence = linesLabel
+    override val confidence: Double = 1.0
+    override val isEligibleForAutoCommit: Boolean = false
+    override val isEligibleForUserRemoval: Boolean = false
+    override val icon: ImageVector? = null
+    override val sourceProvider: SuggestionProvider? = null
+}

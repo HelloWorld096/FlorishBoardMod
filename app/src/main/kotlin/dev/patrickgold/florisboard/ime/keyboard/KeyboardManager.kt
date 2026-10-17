@@ -325,7 +325,8 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
         if (candidate !is ClipboardSuggestionCandidate &&
             candidate !is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate &&
             candidate !is MathSuggestionCandidate &&
-            candidate !is dev.patrickgold.florisboard.ime.nlp.ColorSuggestionCandidate
+            candidate !is dev.patrickgold.florisboard.ime.nlp.ColorSuggestionCandidate &&
+            candidate !is dev.patrickgold.florisboard.ime.nlp.SelectionCountCandidate
         ) {
             editorInstance.learnAcceptedWord(candidate)
         }
@@ -340,6 +341,10 @@ class KeyboardManager(context: Context) : InputKeyEventReceiver {
                         replaceRange = candidate.replaceRange,
                     )
                 )
+            }
+            is dev.patrickgold.florisboard.ime.nlp.SelectionCountCandidate -> {
+                val toastText = "${candidate.wordsLabel} • ${candidate.charsLabel} (${candidate.charsNoSpaces} without spaces) • ${candidate.linesLabel}"
+                appContext.showShortToastSync(toastText)
             }
             is dev.patrickgold.florisboard.ime.nlp.RangedWordCandidate -> {
                 // Only learn once the editor has actually accepted the replacement.

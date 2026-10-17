@@ -55,7 +55,9 @@ import androidx.compose.ui.unit.dp
 import dev.patrickgold.florisboard.app.FlorisPreferenceStore
 import dev.patrickgold.florisboard.ime.nlp.ClipboardSuggestionCandidate
 import dev.patrickgold.florisboard.ime.nlp.MathSuggestionCandidate
+import dev.patrickgold.florisboard.ime.nlp.SelectionCountCandidate
 import dev.patrickgold.florisboard.ime.nlp.SuggestionCandidate
+import org.florisboard.lib.android.showShortToastSync
 import dev.patrickgold.florisboard.ime.theme.FlorisImeUi
 import dev.patrickgold.florisboard.keyboardManager
 import dev.patrickgold.florisboard.nlpManager
@@ -134,7 +136,7 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                 }
                 CandidateItem(
                     modifier = when {
-                        candidate is ColorSuggestionCandidate -> {
+                        candidate is ColorSuggestionCandidate || candidate is SelectionCountCandidate -> {
                             Modifier.fillMaxHeight().wrapContentWidth()
                         }
                         candidate is MathSuggestionCandidate && candidates.size > 1 &&
@@ -157,6 +159,11 @@ fun CandidatesRow(modifier: Modifier = Modifier) {
                             // Long press on a calculator suggestion inserts only the result.
                             candidateItem is MathSuggestionCandidate -> {
                                 keyboardManager.commitMathResultOnly(candidateItem)
+                                true
+                            }
+                            candidateItem is SelectionCountCandidate -> {
+                                keyboardManager.clipboardManager.addNewPlaintext(candidateItem.text.toString())
+                                context.showShortToastSync("Copied count summary")
                                 true
                             }
                             candidateItem.isEligibleForUserRemoval -> {

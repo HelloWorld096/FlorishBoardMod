@@ -134,7 +134,7 @@ object GeneratorUtility {
         }
 
         DATE_REGEX.find(candidate)?.let { m ->
-            val d = LocalDate.now().toString()
+            val d = LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
             return GeneratorMatch(windowStart + m.range.first, cursor, m.value, d, "Date: $d")
         }
 
@@ -211,7 +211,7 @@ object DateTimeUtility {
                     "hours", "h", "hr", "hrs" -> today.plusDays(factor / 24)
                     else -> today.plusDays(factor)
                 }
-                target.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                target.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
             }
 
             val start = windowStart + m.range.first

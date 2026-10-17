@@ -116,7 +116,7 @@ object SnippetManager {
     fun expand(raw: String): String {
         var res = raw
         if (res.contains("{date}")) {
-            res = res.replace("{date}", LocalDate.now().toString())
+            res = res.replace("{date}", LocalDate.now().format(DateTimeFormatter.ofPattern("dd-MM-yyyy")))
         }
         if (res.contains("{time}")) {
             res = res.replace("{time}", LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm")))

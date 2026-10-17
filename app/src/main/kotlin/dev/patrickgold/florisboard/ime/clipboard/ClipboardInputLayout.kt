@@ -721,7 +721,6 @@ fun ClipboardInputLayout(
                     SnyggText(
                         elementName = FlorisImeUi.ClipboardSubheader.elementName,
                         text = "SNIPPETS",
-                        fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                     )
                     Row(
